@@ -51,6 +51,8 @@ const (
 	// ข้อความมาตรฐานที่แสดงให้ WH เห็นตอนสแกน
 	FlowMsgSaved   = "บันทึกข้อมูลสำเร็จ"
 	FlowMsgInvalid = "ข้อมูลไม่ถูกต้อง"
+	// อ่าน QR มาไม่ครบ — คนละเรื่องกับข้อมูลไม่ตรง แค่ยิงซ้ำก็จบ
+	FlowMsgScanIncomplete = "อ่านบาร์โค้ด Kanban มาได้ไม่ครบ กรุณายิงซ้ำอีกครั้ง"
 )
 
 // flowComponents: ลำดับรายการที่ WH ต้องจ่ายต่อ 1 เครื่อง
@@ -895,6 +897,17 @@ func ScanFlowKanban(c *gin.Context) {
 			itDeviceHint = q.ITDevice
 			customerHint = q.Customer
 		} else if machineNo == "" {
+			// มี "," แต่ยังไม่ครบช่อง = เครื่องสแกนส่งมาไม่หมด
+			// ห้ามตัดเศษข้อความไปใช้เป็น MC# เพราะจะกลายเป็น "ข้อมูลไม่ถูกต้อง" ทั้งที่แค่ยิงไม่ครบ
+			if strings.Contains(raw, ",") {
+				c.JSON(200, gin.H{
+					"found":          false,
+					"message":        FlowMsgScanIncomplete,
+					"detail":         "QR บน Kanban ต้องมีครบทุกช่อง (MC#, Product Spec, ลูกค้า, P/N ...) แต่อ่านมาได้ไม่ครบ",
+					"scanIncomplete": true,
+				})
+				return
+			}
 			// QR ที่มีแต่เลขเครื่อง
 			machineNo = strings.ToUpper(strings.Fields(raw)[0])
 		}
