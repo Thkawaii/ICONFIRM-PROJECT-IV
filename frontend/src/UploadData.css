@@ -1,0 +1,67 @@
+.ud-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 20px;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  padding-bottom: 10px;
+}
+
+.ud-tab {
+  appearance: none;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface, #fff);
+  color: var(--text-muted, #64748b);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.ud-tab:hover {
+  border-color: var(--brand, #ea1c24);
+  color: var(--text, #0f172a);
+}
+
+.ud-tab-active {
+  background: var(--brand, #ea1c24);
+  border-color: var(--brand, #ea1c24);
+  color: #fff;
+}
+
+.ud-table-scroll {
+  overflow-x: auto;
+}
+
+.ud-table {
+  min-width: 100%;
+  white-space: nowrap;
+}
+
+.ud-table th,
+.ud-table td {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ud-th-sticky,
+.ud-td-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface, #fff);
+  font-weight: 600;
+  min-width: 48px;
+}
+
+.ud-table thead th.ud-th-sticky,
+.ud-table tbody td.ud-td-sticky {
+  text-align: center;
+}
+
+.ud-table thead .ud-th-sticky {
+  z-index: 2;
+}

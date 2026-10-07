@@ -1,0 +1,54 @@
+# docker-compose สำหรับ server จริงในวง LAN
+# วางไฟล์นี้ไว้ที่ root ของโปรเจกต์ (ข้าง docker-compose.yml เดิม)
+# รัน:  docker compose -f docker-compose.prod.yml up -d --build
+#
+# ผู้ใช้เข้าได้ทั้ง 2 วง:  https://<IP วง 192.168>   และ   https://<IP วง 10.x>
+# เปิดออกนอกเครื่องแค่พอร์ต 80/443 (nginx) — DB และ backend คุยกันภายใน docker เท่านั้น
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: ./iconfirm.env          # ใช้ POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # ไม่ publish 5432 ออกนอกเครื่อง (ถ้าต้องต่อ DB จากเครื่องตัวเองให้ใช้ "127.0.0.1:5432:5432")
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./iconfirm.env          # DB_*, JWT_SECRET, MAIL_*, SMTP_*, WEEKLY_ALERT_*
+    environment:
+      TZ: Asia/Bangkok
+    volumes:
+      - uploads:/app/uploads           # รูปถ่ายที่ผู้ใช้อัปโหลด (อย่าลบ volume นี้)
+    depends_on:
+      db:
+        condition: service_healthy
+    # ไม่ publish 8080 — ให้เข้าผ่าน nginx (/api) เท่านั้น
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # สำคัญ: ใช้ path สัมพัทธ์ แทน http://localhost:8080
+        # browser จะเรียก API ผ่าน IP/ชื่อเดียวกับที่ผู้ใช้พิมพ์เข้ามา -> ใช้ได้ทุกวง LAN
+        VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    ports:
+      - "80:80"      # ถ้าพอร์ตชน เปลี่ยนฝั่งซ้าย เช่น "9080:80"
+      - "443:443"    # ถ้าพอร์ตชน เปลี่ยนฝั่งซ้าย เช่น "9004:443"
+    volumes:
+      - ./frontend/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  uploads:

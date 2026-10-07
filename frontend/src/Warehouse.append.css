@@ -1,0 +1,69 @@
+.scan-popup { border-radius: 18px; }
+.scan-popup .scan-popup-hint { color: #475467; font-size: 14px; line-height: 1.6; margin-top: 4px; }
+.scan-popup .scan-photo-video {
+  width: 100%;
+  max-width: 420px;
+  margin-top: 12px;
+  border-radius: 12px;
+  background: #000;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+}
+.scan-popup .scan-popup-input {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-size: 22px; letter-spacing: 1px; text-align: center; padding: 16px 14px;
+  border: 2px dashed #06e0d4; border-radius: 12px; background: rgba(6, 224, 212,.06); color: #101828;
+}
+.scan-popup .scan-popup-input:focus { border-style: solid; background: #fff; box-shadow: 0 0 0 4px rgba(15,148,136,.15); }
+
+.pc-barcode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 22px; margin: 8px 0 22px; }
+.pc-barcode-card { background: #14c6cc; border-radius: 22px; padding: 22px 24px 18px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 10px 26px rgba(15,148,136,.18); }
+.pc-barcode-title { font-size: 24px; font-weight: 600; color: #1f2d3d; letter-spacing: .2px; }
+.pc-barcode-box { background: #fff; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+.pc-barcode-img { max-width: 100%; height: auto; display: block; }
+.pc-barcode-strip { height: 16px; background: #fff; border-radius: 6px; margin-top: 2px; }
+
+.pc-barcode-grid--single { grid-template-columns: minmax(0, 560px); justify-content: center; }
+.pc-barcode-box .scan-hero-barcode { width: 100%; height: 90px; color: #101828; }
+.pc-barcode-caption { text-align: center; font-size: 17px; font-weight: 600; color: #1f2d3d; margin-top: 2px; }
+.wh-photo-modal { max-width: min(92vw, 640px); }
+.wh-photo-modal-img {
+  margin: 8px 0 4px;
+  background: #0b0f14;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wh-photo-modal-img img {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  display: block;
+}
+
+.wh-photo-thumb {
+  padding: 0;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #f2f4f7;
+  cursor: pointer;
+  line-height: 0;
+  overflow: hidden;
+  display: inline-block;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.wh-photo-thumb img {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  display: block;
+}
+.wh-photo-thumb:hover {
+  border-color: #0f9488;
+  box-shadow: 0 0 0 3px rgba(15,148,136,.15);
+  transform: scale(1.04);
+}
+.wh-photo-thumb.wh-photo-thumb-lg img { width: 64px; height: 64px; }

@@ -1,0 +1,11 @@
+# ค่าจริงบน server (มีรหัสผ่าน) — ห้าม commit
+iconfirm.env
+backend/.env
+
+# ใบรับรอง HTTPS
+certs/*
+!certs/.gitkeep
+
+node_modules/
+dist/
+vite.config.js.timestamp-*

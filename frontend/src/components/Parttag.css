@@ -1,0 +1,118 @@
+.part-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-family: var(--font-sans, system-ui, -apple-system, 'Segoe UI', sans-serif);
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: middle;
+  background: var(--pt-bg, #f1f5f9);
+  border: none;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.part-tag:hover {
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--pt-solid, #64748b) 22%, transparent);
+  transform: translateY(-1px);
+}
+
+.part-tag-code {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--pt-solid, #64748b);
+  font-size: 0;
+  line-height: 0;
+  overflow: hidden;
+  text-indent: -999px;
+}
+
+.part-tag-name {
+  display: inline-flex;
+  align-items: center;
+  color: var(--pt-fg, #334155);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.part-tag-itc {
+  --pt-solid: #ef4444;
+  --pt-fg: #dc2626;
+  --pt-bg: #fee2e2;
+}
+
+.part-tag-sm {
+  --pt-solid: #f59e0b;
+  --pt-fg: #b45309;
+  --pt-bg: #fef3c7;
+}
+
+.part-tag-ph {
+  --pt-solid: #10b981;
+  --pt-fg: #047857;
+  --pt-bg: #d1fae5;
+}
+
+.part-tag-mp {
+  --pt-solid: #3b82f6;
+  --pt-fg: #1d4ed8;
+  --pt-bg: #dbeafe;
+}
+
+.part-tag-cv {
+  --pt-solid: #6366f1;
+  --pt-fg: #4338ca;
+  --pt-bg: #e0e7ff;
+}
+
+.part-tag-en {
+  --pt-solid: #a855f7;
+  --pt-fg: #7e22ce;
+  --pt-bg: #f3e8ff;
+}
+
+.part-tag-cw {
+  --pt-solid: #ec4899;
+  --pt-fg: #be185d;
+  --pt-bg: #fce7f3;
+}
+
+.part-tag-mc {
+  --pt-solid: #64748b;
+  --pt-fg: #475569;
+  --pt-bg: #f1f5f9;
+}
+
+.wh-detail-value-tagged,
+.il-detail-value-tagged {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  line-height: 1.4;
+}
+
+.wh-detail-value-tagged .part-tag,
+.il-detail-value-tagged .part-tag {
+  margin-left: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .part-tag {
+    transition: none;
+  }
+  .part-tag:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .part-tag {
+    padding: 4px 9px;
+  }
+}

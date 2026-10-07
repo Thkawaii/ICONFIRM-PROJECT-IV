@@ -1,0 +1,275 @@
+/* แก้ข้อมูลในตาราง — ใช้โทนสีหลักของระบบ (brand teal #0f8580) */
+
+.ie-cell {
+  display: inline-flex;
+  align-items: center;
+  min-width: 3.5rem;
+  min-height: 1.9rem;
+  max-width: 100%;
+  padding: 0.2rem 0.45rem;
+  margin: -0.2rem -0.45rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.ie-editable {
+  gap: 0.4rem;
+  white-space: nowrap;
+  margin-right: 0;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.ie-text {
+  flex: 0 0 auto;
+}
+
+/* ปุ่มดินสอ: แสดงชัดตลอด ใช้สีหลักของระบบ (teal) ให้มองเห็นง่าย */
+.ie-edit-btn {
+  flex: none;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border: 1px solid #5fdfda;
+  border-radius: 7px;
+  background: #eafcfb;
+  color: #0f8580;
+  cursor: pointer;
+}
+
+.ie-edit-btn svg {
+  stroke-width: 2;
+}
+
+.ie-edit-btn:focus-visible {
+  outline: none;
+  border-color: #0f8580;
+  box-shadow: 0 0 0 3px rgba(15, 133, 128, 0.25);
+}
+
+.ie-edit-btn:disabled {
+  cursor: default;
+  background: #f2f4f7;
+  border-color: #e4e7ec;
+  color: #98a2b3;
+}
+
+.ie-editing {
+  padding: 0;
+  margin: -0.2rem -0.1rem;
+  min-width: 9rem;
+}
+
+.ie-input {
+  width: 100%;
+  min-width: 9rem;
+  height: 2rem;
+  box-sizing: border-box;
+  border: 1px solid #0f8580;
+  border-radius: 6px;
+  padding: 0 0.5rem;
+  font: inherit;
+  font-size: 13px;
+  color: #1e293b;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(15, 133, 128, 0.14);
+}
+
+.ie-input:focus {
+  outline: none;
+}
+
+.ie-input:disabled {
+  opacity: 0.6;
+}
+
+.ie-mono {
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+}
+
+.ie-empty {
+  color: #94a3b8;
+}
+
+.ie-saving {
+  opacity: 0.55;
+}
+
+.ie-flash-ok {
+  background: #ecfdf3;
+  border-color: #a6f4c5;
+}
+
+.ie-flash-err {
+  background: #fef3f2;
+  border-color: #fecdca;
+}
+
+.ie-locked {
+  cursor: not-allowed;
+  color: #475467;
+}
+
+.ie-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #146a66;
+  background: #eafcfb;
+  border: 1px solid #9deeea;
+  cursor: help;
+}
+
+tr.ie-row-locked > td {
+  background: #fafbfc;
+}
+
+.ie-live-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 12.5px;
+  color: #667085;
+}
+
+.ie-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #12b76a;
+}
+
+/* ---- ตัวเลือก (Connectivity) ใช้หน้าตาเดียวกับช่องเลือกของระบบ ---- */
+.ie-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-width: 12.5rem;
+  height: 2.1rem;
+  padding: 0 0.7rem;
+  border: 1px solid #06e0d4;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  color: #1e293b;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(6, 224, 212, 0.18);
+}
+
+.ie-select-trigger:focus-visible {
+  outline: none;
+}
+
+.ie-select-trigger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.ie-select-value {
+  white-space: nowrap;
+}
+
+.ie-select-chevron {
+  flex: none;
+  color: #64748b;
+  transition: transform 150ms ease;
+}
+
+.ie-select-open .ie-select-chevron {
+  transform: rotate(180deg);
+}
+
+.ie-select-list {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+  max-height: 280px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.ie-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #1e293b;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ie-select-option-active {
+  background: #f1f5f9;
+}
+
+.ie-select-option-selected {
+  background: #e0f2f1;
+  color: #00857f;
+  font-weight: 600;
+}
+
+.ie-select-hint {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: #667085;
+}
+
+.ie-select-check {
+  flex: none;
+  color: #00857f;
+}
+
+@media (max-width: 720px) {
+  .ie-select-trigger,
+  .ie-select-option {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ie-select-chevron {
+    transition: none;
+  }
+
+  .ie-editable,
+  .ie-edit-btn {
+    transition: none;
+  }
+}
+
+/* ป้าย "สแกนแล้ว" แบบสีเขียว + เครื่องหมายถูก */
+.ie-lock-badge.ie-scan-done-badge {
+  color: #15803d;
+  background: #dcfce7;
+  border-color: #86efac;
+}

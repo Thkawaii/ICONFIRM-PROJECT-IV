@@ -1,0 +1,164 @@
+.is-drag-armed {
+  border-color: var(--brand-400, #22d3ee) !important;
+  background: rgba(6, 224, 212, 0.05) !important;
+  animation: dz-armed-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes dz-armed-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(6, 224, 212, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(6, 224, 212, 0.12);
+  }
+}
+
+.is-drag-over {
+  position: relative;
+  border-color: transparent !important;
+  background: rgba(6, 224, 212, 0.1) !important;
+  box-shadow: 0 10px 30px rgba(6, 224, 212, 0.22), 0 0 0 4px rgba(6, 224, 212, 0.16) !important;
+  transform: translateY(-2px);
+  animation: none;
+}
+
+.is-drag-over::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  padding: 2px;
+  background: repeating-linear-gradient(
+    115deg,
+    var(--brand-500, #06e0d4) 0 12px,
+    transparent 12px 24px
+  );
+  background-size: 200% 100%;
+  animation: dz-ants 0.7s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+@keyframes dz-ants {
+  to {
+    background-position: 48px 0;
+  }
+}
+
+.is-drag-over::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(6, 224, 212, 0.16), transparent 65%);
+  animation: dz-glow 1.2s ease-in-out infinite;
+}
+
+@keyframes dz-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.is-drag-rejected {
+  border-color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.08) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.18) !important;
+  animation: dz-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes dz-shake {
+  10%,
+  90% {
+    transform: translateX(-2px);
+  }
+  20%,
+  80% {
+    transform: translateX(4px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-7px);
+  }
+  40%,
+  60% {
+    transform: translateX(7px);
+  }
+}
+
+.dz-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dz-drop-text {
+  color: var(--brand-600, #00a39d);
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.dz-arrow {
+  display: inline-block;
+  animation: dz-bounce 0.9s ease-in-out infinite;
+}
+
+@keyframes dz-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.is-drag-over .upload-dropzone-icon,
+.is-drag-over .fdz-icon {
+  animation: dz-bounce 0.9s ease-in-out infinite;
+  background: var(--brand-500, #06e0d4);
+  color: #fff;
+}
+
+body.is-file-dragging .dz-nudge {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.dz-nudge {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-600, #00a39d);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-drag-armed,
+  .is-drag-over,
+  .is-drag-over::before,
+  .is-drag-over::after,
+  .is-drag-rejected,
+  .dz-arrow,
+  .is-drag-over .fdz-icon,
+  .is-drag-over .upload-dropzone-icon {
+    animation: none !important;
+  }
+  .is-drag-over {
+    transform: none;
+  }
+}

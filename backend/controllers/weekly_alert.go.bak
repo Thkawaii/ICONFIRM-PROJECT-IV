@@ -1,0 +1,783 @@
+package controllers
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"sort"
+	"strings"
+	"time"
+
+	"iconfirm/config"
+	"iconfirm/mailer"
+	"iconfirm/models"
+)
+
+func BuildWeeklyReport(w mailer.WeeklyConfig, now time.Time) mailer.WeeklyReport {
+	loc := w.Location
+	if loc == nil {
+		loc = time.Local
+	}
+	now = now.In(loc)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+
+	importWithin := w.ImportWithinDays
+	if importWithin <= 0 {
+		importWithin = 30
+	}
+	exportWithin := w.ExportWithinDays
+	if exportWithin <= 0 {
+		exportWithin = 7
+	}
+
+	weekStart, weekEnd := mailer.WeekBounds(now)
+	weekYear, weekNo := now.ISOWeek()
+
+	report := mailer.WeeklyReport{
+		GeneratedAt:      now,
+		WeekKey:          mailer.ISOWeekKey(now),
+		WeekNo:           weekNo,
+		WeekYear:         weekYear,
+		PeriodStart:      weekStart,
+		PeriodEnd:        weekEnd,
+		ImportWithinDays: importWithin,
+		ExportWithinDays: exportWithin,
+		LeadDays:         models.ExportLicenseLeadDays,
+		LeadWarnDays:     models.ExportLicenseLeadWarnDays,
+		MaxRows:          w.MaxRows,
+		BuddhistEra:      w.BuddhistEra,
+		AppURL:           w.AppURL,
+		Greeting:         w.Greeting,
+		Org:              w.Org,
+		Dept:             w.Dept,
+		LogoWidth:        w.LogoWidth,
+		Import:           []mailer.ImportRow{},
+		Export:           []mailer.ExportRow{},
+	}
+
+	// ใช้ความจริงชุดเดียวกับตารางบนหน้าเว็บ
+	alertIdx := buildLicenseAlertIndex()
+	report.Import, report.ImportCounts, report.ImportTracked = buildImportRows(today, importWithin, alertIdx)
+	report.Export, report.ExportCounts, report.ExportTracked = buildExportRows(today, exportWithin, alertIdx)
+
+	return report
+}
+
+// ---------------------------------------------------------------------------
+// เชื่อมการแจ้งเตือนเข้ากับหน้า License Overview
+//
+// เดิมอีเมลแจ้งเตือนอ่านจากตารางรายการเครื่องตรง ๆ คนละทางกับตารางบนเว็บ
+// จึงเพี้ยนได้ 3 แบบ:
+//  1. ใบที่ต่ออายุไปแล้ว ยังถูกแจ้งว่าหมดอายุ ทั้งที่มีใบใหม่มาแทนแล้ว
+//  2. ใบที่ชีตต่ออายุเขียนว่า Completed ยังถูกแจ้ง ทั้งที่ปิดงานไปแล้ว
+//  3. ใบที่รู้จักจากชีตต่ออายุอย่างเดียว (ไม่มีรายการเครื่อง) ไม่เคยถูกแจ้งเลย
+//
+// ตอนนี้ใช้ buildLicenseOverview() เป็นความจริงชุดเดียวกับที่คนเห็นบนหน้าเว็บ
+// ---------------------------------------------------------------------------
+type licenseAlertIndex struct {
+	// skip[type|normalized no] = ใบนี้ไม่ต้องแจ้ง (ปิดงานแล้ว หรือต่ออายุไปแล้ว)
+	skip map[string]bool
+	// extra = ใบที่ต้องแจ้ง แต่ไม่มีรายการเครื่องในระบบ จึงไม่โผล่ในวิธีเดิม
+	extra []LicenseOverviewRow
+	// info[type|normalized no] = แถวเดียวกับที่คนเห็นบนหน้า License Overview
+	// ใช้เป็นต้นฉบับของจำนวนเครื่องและวันหมดอายุ ตัวเลขในอีเมลจะได้ตรงกับบนเว็บ
+	info map[string]LicenseOverviewRow
+}
+
+func (x licenseAlertIndex) skipped(licenseType, licenseNo string) bool {
+	return x.skip[licenseType+"|"+NormalizeCodeValue(licenseNo)]
+}
+
+// overview: แถวบนหน้า License Overview ของใบอนุญาตใบนั้น
+func (x licenseAlertIndex) overview(licenseType, licenseNo string) (LicenseOverviewRow, bool) {
+	r, ok := x.info[licenseType+"|"+NormalizeCodeValue(licenseNo)]
+	return r, ok
+}
+
+func buildLicenseAlertIndex() licenseAlertIndex {
+	idx := licenseAlertIndex{
+		skip: map[string]bool{},
+		info: map[string]LicenseOverviewRow{},
+	}
+	if config.DB == nil {
+		return idx
+	}
+	for _, r := range buildLicenseOverview() {
+		idx.info[r.LicenseType+"|"+NormalizeCodeValue(r.CurrentLicenseNo)] = r
+
+		// ใบเก่าทุกใบในโซ่ถูกแทนที่ด้วยใบปัจจุบันแล้ว ไม่ต้องแจ้งซ้ำ
+		for _, prev := range r.PreviousLicenseNos {
+			idx.skip[r.LicenseType+"|"+NormalizeCodeValue(prev)] = true
+		}
+		if r.Completed {
+			idx.skip[r.LicenseType+"|"+NormalizeCodeValue(r.CurrentLicenseNo)] = true
+			continue
+		}
+		if r.Items == 0 &&
+			(r.Status == models.LicenseStatusExpired || r.Status == models.LicenseStatusExpiring) {
+			idx.extra = append(idx.extra, r)
+		}
+	}
+	return idx
+}
+
+// alertExtraRows: ใบที่ต้องแจ้งของประเภทนั้น ซึ่งไม่มีรายการเครื่องในระบบ
+func (x licenseAlertIndex) alertExtraRows(licenseType string) []LicenseOverviewRow {
+	out := []LicenseOverviewRow{}
+	for _, r := range x.extra {
+		if r.LicenseType == licenseType {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// กติกา "เสร็จสิ้นแล้ว" — ต้องตรงกับที่หน้าเว็บใช้ ไม่งั้นอีเมลจะแจ้งใบที่ปิดงานไปแล้ว
+//
+// หน้าเว็บ (isLicenseCompleted ฝั่ง frontend และ buildLicenseOverview ฝั่ง backend)
+// ถือว่าเสร็จเมื่อ "คอลัมน์ completed เป็นจริง หรือ ช่องหมายเหตุมีคำว่าเสร็จสิ้น"
+//
+// ตอนนี้การแก้หมายเหตุในตารางตั้งคอลัมน์ completed ให้อัตโนมัติอยู่แล้ว
+// แต่ข้อมูลที่อัปโหลดไว้ก่อนหน้านั้นยังมีคอลัมน์เป็นเท็จทั้งที่หมายเหตุเขียนว่าเสร็จแล้ว
+// จึงต้องอ่านหมายเหตุเป็นทางสำรองเหมือนที่หน้าเว็บทำ
+// ---------------------------------------------------------------------------
+
+// overviewMachines: จำนวนเครื่องแบบเดียวกับคอลัมน์ "จำนวนเครื่อง" บนหน้า License Overview
+//
+// หน้าเว็บใช้จำนวนรายการเครื่องจริงเป็นหลัก แต่ใบที่รู้จักจากชีตต่ออายุอย่างเดียว
+// (ยังไม่มีไฟล์รายการเครื่อง) จะไม่มีรายการให้นับ จึงใช้ TOTAL หรือโควต้าแทน
+// ถ้าอีเมลรู้จักแค่รายการเครื่อง ใบกลุ่มนี้จะขึ้นเป็น 0 ทั้งที่บนเว็บมีตัวเลข
+func overviewMachines(r LicenseOverviewRow) int {
+	if r.Items > 0 {
+		return r.Items
+	}
+	if r.Quota > 0 {
+		return r.Quota
+	}
+	return 0
+}
+
+// alertExpiryDay: วันหมดอายุที่จะใช้ในอีเมล
+//
+// ยึดวันเดียวกับที่แสดงบนหน้า License Overview เป็นหลัก เพราะหน้านั้นรวมใบทั้งโซ่
+// (รวมใบที่ต่ออายุแล้ว) และเลือกวันที่ช้าที่สุดของกลุ่ม ซึ่งคือใบที่ใช้อยู่จริง
+// ถ้าใบนั้นไม่มีบนหน้าเว็บ ค่อยคำนวณเองจากวันที่ออกใบอนุญาตตามเดิม
+func alertExpiryDay(ov LicenseOverviewRow, hasOverview bool, issue *time.Time, validityMonths int, today time.Time) (time.Time, bool) {
+	if hasOverview && ov.ExpiryDate != nil {
+		e := *ov.ExpiryDate
+		return time.Date(e.Year(), e.Month(), e.Day(), 0, 0, 0, 0, today.Location()), true
+	}
+	if issue == nil {
+		return time.Time{}, false
+	}
+	e := issue.AddDate(0, validityMonths, 0)
+	return time.Date(e.Year(), e.Month(), e.Day(), 0, 0, 0, 0, today.Location()), true
+}
+
+func importItemDone(it models.ImportLicenseItem) bool {
+	return it.Completed || models.NoteMeansCompleted(it.Remark)
+}
+
+func exportItemDone(it models.ExportLicenseItem) bool {
+	if it.Completed {
+		return true
+	}
+	// ช่อง Note เป็นตัวหลัก ถ้าว่างค่อยดู Remark (ลำดับเดียวกับหน้าเว็บ)
+	note := strings.TrimSpace(it.Note)
+	if note == "" {
+		note = strings.TrimSpace(it.Remark)
+	}
+	return models.NoteMeansCompleted(note)
+}
+
+func buildImportRows(today time.Time, withinDays int, alertIdx licenseAlertIndex) ([]mailer.ImportRow, mailer.Counts, int) {
+	var counts mailer.Counts
+	rows := []mailer.ImportRow{}
+
+	if config.DB == nil {
+		return rows, counts, 0
+	}
+
+	var items []models.ImportLicenseItem
+	if err := config.DB.Where("completed IS NOT TRUE").Order("id asc").Find(&items).Error; err != nil {
+		return rows, counts, 0
+	}
+
+	type group struct {
+		row   mailer.ImportRow
+		index int
+	}
+	groups := map[string]*group{}
+	order := []string{}
+
+	for _, it := range items {
+		// หน้าเว็บถือว่าเสร็จสิ้นเมื่อ "ติ๊กเสร็จแล้ว หรือ พิมพ์คำว่าเสร็จสิ้นในช่องหมายเหตุ"
+		// อีเมลต้องใช้กติกาเดียวกัน ไม่งั้นแถวที่ปิดงานด้วยหมายเหตุจะยังถูกแจ้งซ้ำ
+		if importItemDone(it) {
+			continue
+		}
+
+		key := it.LicenseNo + "\x00" + it.InvoiceNo
+		g, ok := groups[key]
+		if !ok {
+			g = &group{row: mailer.ImportRow{
+				LicenseNo:     it.LicenseNo,
+				InvoiceNo:     it.InvoiceNo,
+				DeclarationNo: it.DeclarationNo,
+				Brand:         it.Brand,
+				Model:         it.Model,
+			}, index: len(order)}
+			groups[key] = g
+			order = append(order, key)
+		}
+
+		g.row.Machines++
+		if it.ConfirmStatus == models.LicenseItemConfirmed {
+			g.row.Confirmed++
+		}
+		if g.row.DeclarationNo == "" {
+			g.row.DeclarationNo = it.DeclarationNo
+		}
+		if g.row.Model == "" {
+			g.row.Model = it.Model
+		}
+		if g.row.Brand == "" {
+			g.row.Brand = it.Brand
+		}
+		if it.IssueDate != nil && (g.row.IssueDate == nil || it.IssueDate.Before(*g.row.IssueDate)) {
+			g.row.IssueDate = it.IssueDate
+		}
+	}
+
+	tracked := len(order)
+
+	for _, key := range order {
+		row := groups[key].row
+
+		// ปิดงานแล้ว หรือต่ออายุไปแล้ว → ไม่ต้องแจ้ง (ตรงกับที่เห็นบนหน้าเว็บ)
+		if alertIdx.skipped(models.LicenseTypeImport, row.LicenseNo) {
+			continue
+		}
+
+		ov, hasOverview := alertIdx.overview(models.LicenseTypeImport, row.LicenseNo)
+
+		// จำนวนเครื่องต้องเป็นเลขเดียวกับคอลัมน์ "จำนวนเครื่อง" บนหน้า License Overview
+		// หน้าเว็บนับทุกเครื่องที่อยู่บนใบอนุญาตใบนั้น รวมเครื่องที่ปิดงานไปแล้วด้วย
+		if hasOverview {
+			if n := overviewMachines(ov); n > 0 {
+				row.Machines = n
+			}
+		}
+
+		expDay, ok := alertExpiryDay(ov, hasOverview, row.IssueDate, LicenseValidityMonths, today)
+		if !ok {
+			continue
+		}
+		row.ExpiryDate = &expDay
+		row.DaysLeft = models.DaysBetween(today, expDay)
+
+		// แสดงวันหมดอายุของใบนำเข้าในแถวเดียวกับใบนำออก เพื่อให้เห็นความสัมพันธ์
+		// Import -> Export ได้ทันทีในอีเมลและ Excel
+		if impNo := strings.TrimSpace(row.ImportLicenseNo); impNo != "" {
+			if imp, ok := alertIdx.overview(models.LicenseTypeImport, impNo); ok && imp.ExpiryDate != nil {
+				e := *imp.ExpiryDate
+				row.ImportExpiryDate = &e
+			}
+		}
+
+		switch {
+		case row.DaysLeft < 0:
+			row.Status = mailer.StatusExpired
+			counts.Expired++
+		case row.DaysLeft <= withinDays:
+			row.Status = mailer.StatusExpiring
+			counts.Expiring++
+		default:
+			continue
+		}
+
+		rows = append(rows, row)
+	}
+
+	// ใบนำเข้าที่รู้จักจากชีตต่ออายุอย่างเดียว — ไม่มีรายการเครื่อง แต่ก็ต้องแจ้งเตือน
+	for _, r := range alertIdx.alertExtraRows(models.LicenseTypeImport) {
+		row := mailer.ImportRow{
+			LicenseNo:  r.CurrentLicenseNo,
+			Model:      r.Model,
+			ExpiryDate: r.ExpiryDate,
+			// ใบกลุ่มนี้ยังไม่มีไฟล์รายการเครื่อง จำนวนจึงมาจากโควต้าในชีตต่ออายุ
+			Machines: overviewMachines(r),
+		}
+		if r.DaysLeft != nil {
+			row.DaysLeft = *r.DaysLeft
+		}
+		if r.Status == models.LicenseStatusExpired {
+			row.Status = mailer.StatusExpired
+			counts.Expired++
+		} else {
+			row.Status = mailer.StatusExpiring
+			counts.Expiring++
+		}
+		tracked++
+		rows = append(rows, row)
+	}
+
+	sortImportRows(rows)
+	return rows, counts, tracked
+}
+
+func sortImportRows(rows []mailer.ImportRow) {
+	rank := func(status string) int {
+		if status == mailer.StatusExpired {
+			return 0
+		}
+		return 1
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rank(rows[i].Status) != rank(rows[j].Status) {
+			return rank(rows[i].Status) < rank(rows[j].Status)
+		}
+		return rows[i].DaysLeft < rows[j].DaysLeft
+	})
+}
+
+func buildExportRows(today time.Time, withinDays int, alertIdx licenseAlertIndex) ([]mailer.ExportRow, mailer.Counts, int) {
+	var counts mailer.Counts
+	rows := []mailer.ExportRow{}
+
+	if config.DB == nil {
+		return rows, counts, 0
+	}
+
+	var items []models.ExportLicenseItem
+	if err := config.DB.Where("completed IS NOT TRUE").Order("id asc").Find(&items).Error; err != nil {
+		return rows, counts, 0
+	}
+
+	// ข้อมูลเก่าบางชุดอาจไม่มี ImportLicenseNo ใน Export License โดยตรง
+	// จึงใช้ชีตทะเบียนต่ออายุเป็น fallback เพื่อรักษาความสัมพันธ์ Import -> Export
+	var renewals []models.LicenseRenewal
+	_ = config.DB.Select("export_license_no", "import_license_no").
+		Where("export_license_no <> '' AND import_license_no <> ''").
+		Order("sort_order asc, id asc").Find(&renewals).Error
+	exportToImport := map[string]string{}
+	for _, rr := range renewals {
+		ex := strings.TrimSpace(rr.ExportLicenseNo)
+		im := strings.TrimSpace(rr.ImportLicenseNo)
+		if ex != "" && im != "" && exportToImport[ex] == "" {
+			exportToImport[ex] = im
+		}
+	}
+
+	type group struct {
+		row     mailer.ExportRow
+		hasDate bool
+	}
+	groups := map[string]*group{}
+	order := []string{}
+
+	for _, it := range items {
+		// กติกา "เสร็จสิ้น" เดียวกับหน้าเว็บ (คอลัมน์ completed หรือหมายเหตุ)
+		if exportItemDone(it) {
+			continue
+		}
+
+		key := it.ExportLicenseNo
+		g, ok := groups[key]
+		if !ok {
+			g = &group{row: mailer.ExportRow{ExportLicenseNo: key}}
+			groups[key] = g
+			order = append(order, key)
+		}
+		g.row.Machines++
+		// ใบนำออกต้องแสดงคู่กับใบนำเข้าที่เป็นต้นทางเสมอ
+		if g.row.ImportLicenseNo == "" {
+			if linked := strings.TrimSpace(it.ImportLicenseNo); linked != "" {
+				g.row.ImportLicenseNo = linked
+			} else if linked := strings.TrimSpace(exportToImport[key]); linked != "" {
+				g.row.ImportLicenseNo = linked
+			}
+		}
+
+		if it.IssueDate != nil && (g.row.IssueDate == nil || it.IssueDate.Before(*g.row.IssueDate)) {
+			g.row.IssueDate = it.IssueDate
+		}
+
+		item := it
+		if expiry := item.EffectiveExpireDate(); expiry != nil {
+			g.hasDate = true
+			if g.row.ExpiryDate == nil || expiry.Before(*g.row.ExpiryDate) {
+				g.row.ExpiryDate = expiry
+			}
+		}
+	}
+
+	tracked := len(order)
+
+	for _, key := range order {
+		g := groups[key]
+		row := g.row
+
+		// ปิดงานแล้ว หรือต่ออายุไปแล้ว → ไม่ต้องแจ้ง (ตรงกับที่เห็นบนหน้าเว็บ)
+		if alertIdx.skipped(models.LicenseTypeExport, row.ExportLicenseNo) {
+			continue
+		}
+
+		ov, hasOverview := alertIdx.overview(models.LicenseTypeExport, row.ExportLicenseNo)
+
+		// จำนวนเครื่องต้องตรงกับคอลัมน์ "จำนวนเครื่อง" บนหน้า License Overview
+		if hasOverview {
+			if n := overviewMachines(ov); n > 0 {
+				row.Machines = n
+			}
+		}
+
+		// วันหมดอายุยึดตามหน้า License Overview ถ้าไม่มีค่อยใช้ที่คำนวณจากรายการเครื่อง
+		expSrc := row.ExpiryDate
+		if hasOverview && ov.ExpiryDate != nil {
+			expSrc = ov.ExpiryDate
+		} else if !g.hasDate {
+			continue
+		}
+		if expSrc == nil {
+			continue
+		}
+
+		expDay := time.Date(expSrc.Year(), expSrc.Month(), expSrc.Day(), 0, 0, 0, 0, today.Location())
+		row.ExpiryDate = &expDay
+		row.DaysLeft = models.DaysBetween(today, expDay)
+
+		leadDay := models.SubtractBusinessDays(expDay, models.ExportLicenseLeadDays)
+		row.LeadDate = &leadDay
+		row.LeadDaysLeft = models.DaysBetween(today, leadDay)
+
+		if row.LeadDaysLeft < 0 {
+			row.LeadStatus = mailer.LeadOverdue
+		} else {
+			row.LeadStatus = mailer.LeadDue
+			row.LeadUrgent = row.LeadDaysLeft <= models.ExportLicenseLeadWarnDays
+		}
+
+		expiryAlert := true
+		switch {
+		case row.DaysLeft < 0:
+			row.Status = mailer.StatusExpired
+		case row.DaysLeft <= withinDays:
+			row.Status = mailer.StatusExpiring
+		default:
+			row.Status = mailer.StatusValid
+			expiryAlert = false
+		}
+
+		if !expiryAlert {
+			continue
+		}
+
+		switch row.Status {
+		case mailer.StatusExpired:
+			counts.Expired++
+		case mailer.StatusExpiring:
+			counts.Expiring++
+		}
+		if row.LeadStatus == mailer.LeadOverdue {
+			counts.LeadOverdue++
+		} else if row.LeadUrgent {
+			counts.LeadDueSoon++
+		}
+
+		rows = append(rows, row)
+	}
+
+	// ใบนำออกที่รู้จักจากชีตต่ออายุอย่างเดียว — ไม่มีรายการเครื่อง แต่ก็ต้องแจ้งเตือน
+	for _, r := range alertIdx.alertExtraRows(models.LicenseTypeExport) {
+		if r.ExpiryDate == nil {
+			continue
+		}
+		exp := *r.ExpiryDate
+		expDay := time.Date(exp.Year(), exp.Month(), exp.Day(), 0, 0, 0, 0, today.Location())
+		importNo := ""
+		var renewal models.LicenseRenewal
+		if err := config.DB.Where("export_license_no = ?", r.CurrentLicenseNo).Order("sort_order asc, id asc").First(&renewal).Error; err == nil {
+			importNo = strings.TrimSpace(renewal.ImportLicenseNo)
+		}
+
+		row := mailer.ExportRow{
+			ImportLicenseNo: importNo,
+			ExportLicenseNo: r.CurrentLicenseNo,
+			IssueDate:       r.IssueDate,
+			ExpiryDate:      &expDay,
+			DaysLeft:        models.DaysBetween(today, expDay),
+			// ใบกลุ่มนี้ยังไม่มีไฟล์รายการเครื่อง จำนวนจึงมาจากโควต้าในชีตต่ออายุ
+			Machines: overviewMachines(r),
+		}
+		if row.ImportLicenseNo != "" {
+			if imp, ok := alertIdx.overview(models.LicenseTypeImport, row.ImportLicenseNo); ok && imp.ExpiryDate != nil {
+				e := *imp.ExpiryDate
+				row.ImportExpiryDate = &e
+			}
+		}
+
+		leadDay := models.SubtractBusinessDays(expDay, models.ExportLicenseLeadDays)
+		row.LeadDate = &leadDay
+		row.LeadDaysLeft = models.DaysBetween(today, leadDay)
+		if row.LeadDaysLeft < 0 {
+			row.LeadStatus = mailer.LeadOverdue
+			counts.LeadOverdue++
+		} else {
+			row.LeadStatus = mailer.LeadDue
+			row.LeadUrgent = row.LeadDaysLeft <= models.ExportLicenseLeadWarnDays
+			if row.LeadUrgent {
+				counts.LeadDueSoon++
+			}
+		}
+
+		if r.Status == models.LicenseStatusExpired {
+			row.Status = mailer.StatusExpired
+			counts.Expired++
+		} else {
+			row.Status = mailer.StatusExpiring
+			counts.Expiring++
+		}
+		tracked++
+		rows = append(rows, row)
+	}
+
+	sortExportRows(rows)
+	return rows, counts, tracked
+}
+
+func sortExportRows(rows []mailer.ExportRow) {
+	rank := func(r mailer.ExportRow) int {
+		if r.Status == mailer.StatusExpired {
+			return 0
+		}
+		return 1
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rank(rows[i]) != rank(rows[j]) {
+			return rank(rows[i]) < rank(rows[j])
+		}
+		return rows[i].DaysLeft < rows[j].DaysLeft
+	})
+}
+
+func loadWeeklyLogo(w mailer.WeeklyConfig) (mailer.Attachment, bool) {
+	path := strings.TrimSpace(w.LogoPath)
+	if path == "" {
+		return mailer.Attachment{}, false
+	}
+
+	logo, err := mailer.LoadInlineImage(path, mailer.LogoContentID)
+	if err != nil {
+		log.Printf("[weekly-alert] อ่านไฟล์โลโก้ %s ไม่ได้ (%v) — จะส่งจดหมายโดยไม่มีโลโก้", path, err)
+		return mailer.Attachment{}, false
+	}
+	return logo, true
+}
+
+func personalGreeting(email string, names map[string]string, fallback string) string {
+	name := strings.TrimSpace(names[strings.ToLower(strings.TrimSpace(email))])
+	if name == "" {
+		return fallback
+	}
+	return "คุณ" + name
+}
+
+func BuildWeeklyMessages(report mailer.WeeklyReport, w mailer.WeeklyConfig, cfg mailer.Config, names map[string]string) []mailer.Message {
+	var shared []mailer.Attachment
+	if logo, ok := loadWeeklyLogo(w); ok {
+		report.LogoSrc = "cid:" + logo.ContentID
+		shared = append(shared, logo)
+	}
+	if w.AttachCSV && !report.IsEmpty() {
+		if strings.EqualFold(w.AttachFormat, "csv") {
+			shared = append(shared, mailer.BuildCSV(report))
+		} else {
+			shared = append(shared, mailer.BuildXLSX(report))
+		}
+	}
+
+	msgs := make([]mailer.Message, 0, len(report.Recipients))
+	for _, to := range report.Recipients {
+		r := report
+		r.Greeting = personalGreeting(to, names, w.Greeting)
+
+		msg := mailer.Message{
+			FromEmail: cfg.FromEmail,
+			FromName:  cfg.FromName,
+			To:        []string{to},
+			CC:        cfg.CC,
+			BCC:       cfg.BCC,
+			Subject:   r.Subject(),
+			HTML:      mailer.RenderHTML(r),
+			Text:      mailer.RenderText(r),
+		}
+		msg.Attachments = append(msg.Attachments, shared...)
+		msgs = append(msgs, msg)
+	}
+
+	return msgs
+}
+
+func SendWeeklyAlert(ctx context.Context, mode, triggeredBy string, overrideTo []string) (*models.WeeklyAlertLog, error) {
+	w := mailer.LoadWeeklyConfig()
+	cfg := LoadEffectiveMailConfig()
+
+	if len(overrideTo) > 0 {
+		cfg.To = overrideTo
+	}
+
+	report := BuildWeeklyReport(w, time.Now())
+	report.Recipients = cfg.To
+
+	entry := &models.WeeklyAlertLog{
+		WeekKey:     report.WeekKey,
+		Mode:        mode,
+		Subject:     report.Subject(),
+		Recipients:  strings.Join(cfg.To, ", "),
+		ItemCount:   report.TotalActions(),
+		ExpiredCnt:  report.ImportCounts.Expired + report.ExportCounts.Expired,
+		ExpiringCnt: report.ImportCounts.Expiring + report.ExportCounts.Expiring,
+		LeadCnt:     report.ExportCounts.LeadOverdue + report.ExportCounts.LeadDueSoon,
+		Provider:    cfg.Provider,
+		SentAt:      time.Now(),
+	}
+
+	if mode == models.WeeklyAlertAuto && report.IsEmpty() && !w.SendWhenEmpty {
+		entry.Status = models.WeeklyAlertSkipped
+		saveWeeklyAlertLog(entry)
+		return entry, nil
+	}
+
+	names := ActiveMailRecipientNames(models.MailRecipientTo)
+	// จดหมาย 1 ฉบับต่อผู้รับ 1 คน — คำขึ้นต้น "เรียน คุณ…" จึงเป็นชื่อของคนนั้นจริง ๆ
+	msgs := BuildWeeklyMessages(report, w, cfg, names)
+
+	if len(msgs) == 0 {
+		entry.Status = models.WeeklyAlertFailed
+		entry.Error = "ยังไม่ได้ตั้งผู้รับอีเมล — ตั้ง WEEKLY_ALERT_TO ในไฟล์ .env หรือเพิ่มผู้รับจากหน้า Admin"
+		entry.TriggeredBy = triggeredBy
+		saveWeeklyAlertLog(entry)
+		return entry, fmt.Errorf("%s", entry.Error)
+	}
+
+	var failed []string
+	var lastErr error
+	for _, msg := range msgs {
+		if err := mailer.Send(ctx, cfg, msg); err != nil {
+			to := "?"
+			if len(msg.To) > 0 {
+				to = msg.To[0]
+			}
+			failed = append(failed, fmt.Sprintf("%s: %v", to, err))
+			lastErr = err
+		}
+	}
+
+	entry.TriggeredBy = triggeredBy
+
+	if len(failed) == len(msgs) {
+		entry.Status = models.WeeklyAlertFailed
+		entry.Error = truncate(strings.Join(failed, "; "), 990)
+		saveWeeklyAlertLog(entry)
+		return entry, lastErr
+	}
+
+	entry.Status = models.WeeklyAlertSent
+	if len(failed) > 0 {
+		entry.Error = truncate("ส่งไม่สำเร็จบางส่วน: "+strings.Join(failed, "; "), 990)
+	}
+	saveWeeklyAlertLog(entry)
+	return entry, nil
+}
+
+func SendWeeklyAlertToNewRecipient(ctx context.Context, email, name, triggeredBy string) (*models.WeeklyAlertLog, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return nil, fmt.Errorf("ไม่ได้ระบุอีเมลผู้รับ")
+	}
+
+	w := mailer.LoadWeeklyConfig()
+	cfg := LoadEffectiveMailConfig()
+
+	cfg.To = []string{email}
+	cfg.CC = nil
+	cfg.BCC = nil
+
+	report := BuildWeeklyReport(w, time.Now())
+	report.Recipients = cfg.To
+
+	entry := &models.WeeklyAlertLog{
+		WeekKey:     report.WeekKey,
+		Mode:        models.WeeklyAlertManual,
+		Subject:     report.Subject(),
+		Recipients:  email,
+		ItemCount:   report.TotalActions(),
+		ExpiredCnt:  report.ImportCounts.Expired + report.ExportCounts.Expired,
+		ExpiringCnt: report.ImportCounts.Expiring + report.ExportCounts.Expiring,
+		LeadCnt:     report.ExportCounts.LeadOverdue + report.ExportCounts.LeadDueSoon,
+		Provider:    cfg.Provider,
+		TriggeredBy: triggeredBy,
+		SentAt:      time.Now(),
+	}
+
+	if report.IsEmpty() && !w.SendWhenEmpty {
+		entry.Status = models.WeeklyAlertSkipped
+		saveWeeklyAlertLog(entry)
+		return entry, nil
+	}
+
+	names := map[string]string{}
+	if n := strings.TrimSpace(name); n != "" {
+		names[email] = n
+	}
+
+	msgs := BuildWeeklyMessages(report, w, cfg, names)
+	if len(msgs) == 0 {
+		entry.Status = models.WeeklyAlertFailed
+		entry.Error = "สร้างอีเมลไม่สำเร็จ"
+		saveWeeklyAlertLog(entry)
+		return entry, fmt.Errorf("%s", entry.Error)
+	}
+
+	for _, msg := range msgs {
+		if err := mailer.Send(ctx, cfg, msg); err != nil {
+			entry.Status = models.WeeklyAlertFailed
+			entry.Error = truncate(err.Error(), 990)
+			saveWeeklyAlertLog(entry)
+			return entry, err
+		}
+	}
+
+	entry.Status = models.WeeklyAlertSent
+	saveWeeklyAlertLog(entry)
+	return entry, nil
+}
+
+func saveWeeklyAlertLog(entry *models.WeeklyAlertLog) {
+	if config.DB == nil || entry == nil {
+		return
+	}
+	config.DB.Create(entry)
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max]
+}
+
+func WeeklyAlertSentThisWeek(weekKey string) bool {
+	if config.DB == nil {
+		return false
+	}
+	var count int64
+	config.DB.Model(&models.WeeklyAlertLog{}).
+		Where("week_key = ? AND mode = ? AND status IN ?",
+			weekKey, models.WeeklyAlertAuto,
+			[]string{models.WeeklyAlertSent, models.WeeklyAlertSkipped}).
+		Count(&count)
+	return count > 0
+}

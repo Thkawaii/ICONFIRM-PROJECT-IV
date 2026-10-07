@@ -1,0 +1,384 @@
+.wa-subtitle {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 19px;
+  max-width: 620px;
+}
+
+.wa-heading-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.wa-loading {
+  padding: 40px 0;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.wa-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.wa-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.wa-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 0.04);
+}
+
+.wa-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.wa-card-head > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.wa-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: #ecfdfc;
+  color: #0f8580;
+  flex: none;
+}
+
+.wa-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.wa-card-sub {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: #94a3b8;
+}
+
+.wa-card-body {
+  padding: 6px 18px 14px;
+}
+
+.wa-info-row {
+  display: flex;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px dashed #eef2f6;
+  font-size: 12.5px;
+}
+
+.wa-info-row:last-child {
+  border-bottom: none;
+}
+
+.wa-info-label {
+  flex: none;
+  width: 96px;
+  color: #94a3b8;
+}
+
+.wa-info-value {
+  flex: 1;
+  min-width: 0;
+  color: #0f172a;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.wa-info-hint {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.wa-pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.wa-pill-ok {
+  background: #ecfdf3;
+  border-color: #abefc6;
+  color: #027a48;
+}
+
+.wa-pill-bad {
+  background: #fef3f2;
+  border-color: #fecdca;
+  color: #b42318;
+}
+
+.wa-pill-muted {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #64748b;
+}
+
+.wa-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.wa-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wa-btn-primary {
+  background: #0f8580;
+  color: #fff;
+}
+
+.wa-btn-primary:hover:not(:disabled) {
+  background: #0b6f6b;
+}
+
+.wa-btn-ghost {
+  background: #fff;
+  border-color: #e2e8f0;
+  color: #334155;
+}
+
+.wa-btn-ghost:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.wa-send-row {
+  display: flex;
+  gap: 8px;
+  padding: 4px 18px 0;
+}
+
+.wa-input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  font-size: 12.5px;
+  color: #0f172a;
+  background: #fff;
+}
+
+.wa-input:focus {
+  outline: none;
+  border-color: #5fdfda;
+  box-shadow: 0 0 0 3px rgb(0 163 157 / 0.12);
+}
+
+.wa-hint {
+  margin: 8px 18px 16px;
+  font-size: 11px;
+  line-height: 16px;
+  color: #94a3b8;
+}
+
+.wa-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 18px 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #fef3f2;
+  border: 1px solid #fecdca;
+  color: #b42318;
+  font-size: 11.5px;
+  line-height: 17px;
+}
+
+.wa-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 18px 16px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-size: 11.5px;
+  line-height: 17px;
+}
+
+.wa-empty {
+  padding: 28px 18px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 12.5px;
+}
+
+.wa-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px 18px 4px;
+}
+
+.wa-stat {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 6px;
+  text-align: center;
+  background: #fff;
+}
+
+.wa-stat-value {
+  font-size: 22px;
+  line-height: 26px;
+  font-weight: 700;
+}
+
+.wa-stat-label {
+  margin-top: 2px;
+  font-size: 10.5px;
+  line-height: 14px;
+  font-weight: 600;
+}
+
+.wa-stat-bad {
+  background: #fef3f2;
+  border-color: #fecdca;
+}
+.wa-stat-bad .wa-stat-value,
+.wa-stat-bad .wa-stat-label {
+  color: #b42318;
+}
+
+.wa-stat-warn {
+  background: #fffaeb;
+  border-color: #fedf89;
+}
+.wa-stat-warn .wa-stat-value,
+.wa-stat-warn .wa-stat-label {
+  color: #b54708;
+}
+
+.wa-stat-info {
+  background: #eff8ff;
+  border-color: #b2ddff;
+}
+.wa-stat-info .wa-stat-value,
+.wa-stat-info .wa-stat-label {
+  color: #175cd3;
+}
+
+.wa-subject {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 12px 18px 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f8fafc;
+  border: 1px solid #eef2f6;
+}
+
+.wa-subject-label {
+  flex: none;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.wa-subject-text {
+  font-size: 12px;
+  line-height: 17px;
+  color: #0f172a;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.wa-preview-frame {
+  margin: 12px 18px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #eef2f5;
+}
+
+.wa-iframe {
+  display: block;
+  width: 100%;
+  height: 720px;
+  border: 0;
+  background: #eef2f5;
+}
+
+.wa-spin {
+  animation: wa-spin 0.9s linear infinite;
+}
+
+@keyframes wa-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1100px) {
+  .wa-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wa-iframe {
+    height: 560px;
+  }
+}
+
+@media (max-width: 640px) {
+  .wa-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wa-send-row {
+    flex-direction: column;
+  }
+
+  .wa-info-label {
+    width: 80px;
+  }
+}
