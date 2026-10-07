@@ -6,10 +6,9 @@ import { confirmDelete, toastSuccess, toastError } from '../lib/toast.js';
 import { inPeriod } from '../lib/dateRange.js';
 import PeriodRangePicker from '../components/PeriodRangePicker.jsx';
 import { scanStep, scanLoading, scanClose, scanCloseWait, scanSuccessToast, scanErrorAlert, scanConfirmAlert, scanPhotoCapture } from '../lib/scanPopup.js';
-import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ChevronRightIcon, CameraIcon, ArrowUpTrayIcon, ArrowsRightLeftIcon, CubeIcon, DocumentTextIcon, WrenchScrewdriverIcon, XMarkIcon } from '../components/icons.jsx';
+import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ChevronRightIcon, CameraIcon, ArrowUpTrayIcon, ArrowsRightLeftIcon, CubeIcon, DocumentTextIcon, QrCodeIcon, WrenchScrewdriverIcon, XMarkIcon } from '../components/icons.jsx';
 import AppShell from '../components/AppShell.jsx';
 import SelectField from '../components/Selectfield.jsx';
-import bcKanban from '../assets/barcodes/Kanban.gif';
 
 // ---------------------------------------------------------------------------
 // ขั้นตอน MFG
@@ -35,6 +34,26 @@ function escapeHtml(v) {
 function firstToken(v) {
   if (!v) return '';
   return String(v).trim().split(/\s+/)[0] || '';
+}
+
+// QR บน Kanban เป็นข้อความหลายช่องคั่นด้วย "," (MC#, Product Spec, ลูกค้า, P/N ...)
+// ฝั่ง backend จะถือว่าเป็น QR ของ Kanban ก็ต่อเมื่อมี "," อย่างน้อย 5 ตัว
+// ถ้าอ่านมาไม่ครบแล้วส่งไปเลย backend จะตัดเอาเศษข้อความไปเป็น MC# → เด้ง "ข้อมูลไม่ถูกต้อง"
+const KANBAN_MIN_COMMAS = 5;
+function looksLikeKanbanQR(code) {
+  return (String(code || '').match(/,/g) || []).length >= KANBAN_MIN_COMMAS;
+}
+// เผื่อกรณีสแกนบาร์โค้ดที่เป็น MC# เปล่า ๆ (ไม่มี ",") เช่น YN30100002
+// ต้องมีตัวเลขด้วย ไม่งั้นคำธรรมดาอย่าง "Kanban" จะผ่านไปได้
+function looksLikeMachineNo(code) {
+  return /^(?=.*[0-9])[A-Z][A-Z0-9-]{5,}$/i.test(String(code || '').trim());
+}
+// คืนข้อความเตือนถ้าค่ายังใช้ไม่ได้ · คืน '' ถ้าผ่าน
+function validateKanbanCode(v) {
+  const val = String(v || '').trim();
+  if (!val) return 'ยังไม่มีค่าที่สแกน';
+  if (looksLikeKanbanQR(val) || looksLikeMachineNo(val)) return '';
+  return 'อ่านบาร์โค้ด Kanban มาได้ไม่ครบ — กรุณายิงซ้ำอีกครั้ง (ให้หัวสแกนอยู่นิ่งจนอ่านจบ)';
 }
 export const MFG_NAV_ITEMS = [{
   to: '/mfg-assembly',
@@ -92,7 +111,6 @@ export default function MFGAssemblyPage() {
   const photoFileInputRef = useRef(null);
   const pendingPhotoRowIdRef = useRef(null);
   const busyRef = useRef(false);
-  const fireRef = useRef(() => {});
   function handlePeriodModeChange(next) {
     setPeriodMode(next);
     if (next !== 'all' && !periodAnchor) setPeriodAnchor(todayYMD());
@@ -129,55 +147,21 @@ export default function MFGAssemblyPage() {
     setPage(1);
   }, [search, partFilter, pageSize, periodMode, periodAnchor]);
 
-  // รับค่าจากเครื่องสแกนที่ยิงเข้ามาตรง ๆ (ไม่ได้โฟกัสช่องกรอก)
-  useEffect(() => {
-    let buffer = '';
-    let flushTimer = null;
-    function fireBuffered() {
-      const code = buffer.trim();
-      buffer = '';
-      if (code.length >= 2 && !busyRef.current) fireRef.current(code);
-    }
-    function onKeydown(e) {
-      if (busyRef.current) return;
-      const tag = (e.target?.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-      if (e.target?.closest?.('[data-scan-ignore]')) return;
-      if (e.key === 'Enter') {
-        if (flushTimer) clearTimeout(flushTimer);
-        fireBuffered();
-        return;
-      }
-      if (e.key && e.key.length === 1) {
-        buffer += e.key;
-        if (buffer.length >= 2) e.preventDefault();
-        if (flushTimer) clearTimeout(flushTimer);
-        flushTimer = setTimeout(fireBuffered, 120);
-      }
-    }
-    window.addEventListener('keydown', onKeydown);
-    return () => {
-      window.removeEventListener('keydown', onKeydown);
-      if (flushTimer) clearTimeout(flushTimer);
-    };
-  }, []);
-
   // ขั้นที่ 1 — Scan Kanban: เทียบ MC# + Product Spec + P/N กับ master_data
   //             แล้วอ่านของที่ WH จ่ายมาให้เครื่องนี้
-  async function runKanbanScan(presetCode = '') {
+  async function runKanbanScan() {
     if (busyRef.current) return;
     busyRef.current = true;
     setScanBusy(true);
     try {
-      let qrCode = String(presetCode || '').trim();
-      if (!qrCode) {
-        qrCode = await scanStep({
-          title: 'Scan Kanban',
-          confirmText: 'ตรวจสอบ'
-        });
-        if (!qrCode) return;
-        qrCode = qrCode.trim();
-      }
+      // กดการ์ด Kanban → เปิด popup เปล่า ๆ รอรับค่าจากเครื่องสแกน
+      // หน้าหลักไม่ดักคีย์เองแล้ว ช่องใน popup เป็นที่เดียวที่รับค่าจากเครื่องสแกน
+      const qrCode = (await scanStep({
+        title: 'Scan Kanban',
+        confirmText: 'ตรวจสอบ',
+        validate: validateKanbanCode
+      }) || '').trim();
+      if (!qrCode) return;
       scanLoading('กำลังอ่านของที่ WH จ่ายมา...');
       let res = null;
       try {
@@ -206,11 +190,11 @@ export default function MFGAssemblyPage() {
       await runItemChecks(res?.machine, qrCode);
     } finally {
       busyRef.current = false;
-      setScanBusy(false);
+      // เริ่มนับ cooldown ใหม่ตอนปิด เพื่อกลืนตัวอักษรที่ยังค้างอยู่ในสายของการยิงชุดเดิม
+        setScanBusy(false);
       await loadRows();
     }
   }
-  fireRef.current = code => runKanbanScan(code);
 
   // ขั้นที่ 2-4 — ไล่ถาม MFG ทีละรายการว่า Part# ที่ WH จ่ายมาถูกต้องไหม
   //   ถูกต้อง → (CW / CV / SM / MP / PH: สแกน S/N# ก่อน) → ถ่ายรูป → บันทึก
@@ -513,17 +497,16 @@ export default function MFGAssemblyPage() {
       </div>
 
       <div className="pc-barcode-grid pc-barcode-grid--single">
-        <div className="pc-barcode-card pc-card-mc" role="button" tabIndex={0} title="Scan Kanban" onClick={() => !scanBusy && runKanbanScan()} onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          if (!scanBusy) runKanbanScan();
-        }
-      }}>
+        {/* กดการ์ดนี้ = เปิด popup สแกน · ไม่ดักคีย์จากเครื่องสแกนที่หน้าหลักแล้ว
+            เพราะข้อมูลที่ยิงมามีทั้งเว้นวรรคและ Enter ไปสั่งเปิด popup ซ้อนกันเอง */}
+        <div className="pc-barcode-card pc-card-mc pc-scan-card" role="button" tabIndex={0} title="Scan Kanban" onClick={() => !scanBusy && runKanbanScan()}>
           <span className="pc-barcode-kind">Kanban</span>
-          <div className="pc-barcode-title">{scanBusy ? 'กำลังตรวจสอบ...' : 'Scan Kanban'}</div>
-          <div className="pc-barcode-box">
-            <img className="pc-barcode-img" src={bcKanban} alt="บาร์โค้ด Kanban" />
+          <div className="pc-scan-icon" aria-hidden="true">
+            <QrCodeIcon />
+            <i className="pc-scan-beam" />
           </div>
+          <div className="pc-barcode-title">Scan Kanban</div>
+          <span className="pc-scan-cta">{scanBusy ? 'กำลังตรวจสอบ...' : 'กดที่นี่เพื่อเริ่มสแกน'}</span>
         </div>
       </div>
 

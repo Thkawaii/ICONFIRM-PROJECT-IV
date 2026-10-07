@@ -41,10 +41,16 @@ export async function scanStep({
       const input = Swal.getInput();
       if (!input) return;
       input.focus();
+      // มีค่ามาให้แล้ว (เช่น ยิงจากเครื่องสแกนตอนอยู่หน้าหลัก) → เลือกไว้ทั้งหมด
+      // ยิงซ้ำอีกครั้งจะได้ทับของเดิม ไม่ใช่ต่อท้ายจนข้อมูลเพี้ยน
+      if (input.value) input.select();
       let confirmed = false;
-      const doConfirm = () => {
+      // auto = ระบบเดาเองว่าสแกนจบแล้ว · ถ้าค่ายังไม่ผ่าน validate ให้รอต่อ อย่าเพิ่งยิง API
+      const doConfirm = (auto = false) => {
         if (confirmed) return;
-        if (!input.value.trim()) return;
+        const val = input.value.trim();
+        if (!val) return;
+        if (auto && validate && validate(val)) return;
         confirmed = true;
         Swal.clickConfirm();
         setTimeout(() => {
@@ -58,7 +64,7 @@ export async function scanStep({
         }
       });
       input.addEventListener('paste', () => {
-        setTimeout(doConfirm, 0);
+        setTimeout(() => doConfirm(true), 0);
       });
       let lastKeyAt = 0;
       let fastKeys = 0;
@@ -74,7 +80,8 @@ export async function scanStep({
         lastKeyAt = now;
         if (idleTimer) clearTimeout(idleTimer);
         if (fastKeys >= 5) {
-          idleTimer = setTimeout(doConfirm, 200);
+          // รอให้เงียบ 400 ms ก่อน — บาร์โค้ด Kanban ยาว ของเดิมรอ 200 ms แล้วตัดกลางคัน
+          idleTimer = setTimeout(() => doConfirm(true), 400);
         }
       });
     }
