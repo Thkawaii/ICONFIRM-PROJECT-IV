@@ -1104,3 +1104,144 @@
     object-fit: contain;
   }
 }
+
+/* ===========================================================================
+   13. popup สแกน (SweetAlert) — ข้อยกเว้นเดียวในไฟล์นี้ที่ไม่ได้ครอบด้วย .wmx
+   ---------------------------------------------------------------------------
+   SweetAlert แปะ popup ไว้ที่ <body> นอก React tree ตัวครอบ .wmx จึงเอื้อมไม่ถึง
+   หมวดนี้จึงเขียนตรงกับ .scan-popup / .swal2-* และจำกัดไว้ในช่วงจอมือถือเท่านั้น
+   popup ชุดนี้ใช้เฉพาะขั้นตอนสแกนของ WH และ MFG อยู่แล้ว
+   =========================================================================== */
+
+/* ไอคอน ✓ / ✗ เคยหลุดไปขึ้นบรรทัดใหม่เพราะอยู่ในก้อนข้อความที่ตัดคำได้
+   จับค่ากับไอคอนเป็นคนละช่อง ไอคอนจะอยู่ท้ายค่าเสมอไม่ว่าค่าจะยาวแค่ไหน */
+.scan-popup .mfg-check-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.scan-popup .mfg-check-icon {
+  flex: 0 0 auto;
+  margin-left: 0;
+}
+
+@media (max-width: 560px) {
+  /* เบียดขอบให้น้อยลง ได้ความกว้างคืนมาราว 25px ต่อบรรทัด */
+  .swal2-popup {
+    padding: 20px 15px 18px !important;
+  }
+
+  .swal2-title {
+    font-size: 18px !important;
+    line-height: 1.45 !important;
+  }
+
+  .swal2-html-container {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  /* กล่องตรวจของ MFG — เดิมชื่อหัวข้อกับค่าอยู่บรรทัดเดียวกัน
+     ค่าอย่าง LB08-0TOCBG1VU109 เหลือที่ไม่พอจึงถูกตัดกลางรหัสเป็นสองบรรทัด
+     ซึ่งอ่านผิดได้ง่ายมากตอนเทียบกับของจริง
+     วางชื่อหัวข้อไว้บนค่า ค่าจะได้ความกว้างเต็มบรรทัดและไม่ต้องตัดคำอีก */
+  .scan-popup .mfg-check-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+    padding: 9px 7px;
+  }
+
+  .scan-popup .mfg-check-row.mfg-check-pair {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .scan-popup .mfg-check-cell {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+  }
+
+  .scan-popup .mfg-check-label {
+    flex: none;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  .scan-popup .mfg-check-value {
+    width: 100%;
+    font-size: 15.5px;
+  }
+
+  .scan-popup .scan-popup-hint {
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+
+  /* กล่องสรุปผลการเทียบ — จอแคบวางคำอธิบายไว้ใต้คำตัดสิน ไม่เบียดกันบรรทัดเดียว */
+  .scan-popup .mfg-cmp-head {
+    flex-wrap: wrap;
+    padding: 9px 11px;
+    font-size: 14px;
+  }
+
+  .scan-popup .mfg-cmp-note {
+    flex: 1 0 100%;
+    margin-left: 27px;
+    text-align: left;
+  }
+
+  .scan-popup .mfg-cmp-body {
+    padding: 0 11px;
+  }
+
+  /* ช่องสแกน: ตัวค่าที่ยิงเข้ามายังตัวโตอ่านง่าย แต่ข้อความบอกใบ้ย่อลง
+     ไม่งั้น "รอรับสัญญาณจากเครื่องสแกน..." โดนตัดหายกลางประโยค */
+  .scan-popup .scan-popup-input {
+    font-size: 18px !important;
+    letter-spacing: 0.02em !important;
+    padding: 13px 10px !important;
+  }
+
+  .scan-popup .scan-popup-input::placeholder {
+    font-family: var(--font-display, 'Inter', 'IBM Plex Sans Thai', sans-serif);
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0;
+  }
+
+  /* ปุ่ม: สองปุ่มยังอยู่บรรทัดเดียวกัน สามปุ่มขึ้นไปจะตกบรรทัดแบบกว้างเท่ากัน
+     ไม่ใช่เบียดกันจนตัวหนังสือล้นแบบเดิม */
+  .swal2-popup .swal2-actions {
+    width: 100%;
+    gap: 8px;
+    margin-top: 16px !important;
+  }
+
+  .swal2-popup .swal2-actions .swal2-styled {
+    flex: 1 1 124px;
+    margin: 0 !important;
+    min-height: 46px;
+    padding: 11px 12px !important;
+  }
+
+  /* ตารางเทียบ Specification sheet */
+  .spec-table {
+    font-size: 12px;
+  }
+
+  .spec-table th,
+  .spec-table td {
+    padding: 6px 7px;
+  }
+
+  .scan-error-text {
+    font-size: 14px;
+  }
+}
