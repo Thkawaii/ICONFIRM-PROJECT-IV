@@ -554,6 +554,131 @@ a {
   background: #ef4444;
 }
 
+/* ===== กล่องสรุปผลการเทียบ (MFG) =====
+   คำตอบที่คนหน้างานต้องการมีข้อเดียว: ของที่ WH จ่ายมา ตรงกับ Kanban ไหม
+   จึงบอกผลไว้ที่หัวกล่องจุดเดียว ส่วนตัวเลขข้างในเป็นสีดำล้วนให้อ่านรหัสได้ชัด
+   สีแดงเหลือไว้เฉพาะช่องที่ไม่ตรงจริง ๆ จะได้เห็นทันทีว่าต้องไปดูตรงไหน */
+.mfg-cmp {
+  margin: 10px 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.mfg-cmp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.mfg-cmp-ok {
+  border-color: #bbe9d4;
+}
+
+.mfg-cmp-ok .mfg-cmp-head {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.mfg-cmp-bad {
+  border-color: #f6c9c5;
+}
+
+.mfg-cmp-bad .mfg-cmp-head {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.mfg-cmp-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+}
+
+.mfg-cmp-ok .mfg-cmp-mark {
+  background: #10b981;
+}
+
+.mfg-cmp-bad .mfg-cmp-mark {
+  background: #ef4444;
+}
+
+.mfg-cmp-note {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  text-align: right;
+}
+
+.mfg-cmp-body {
+  padding: 0 12px;
+}
+
+/* ข้างในไม่ต้องย้ำสีอีก พื้นกับแถบข้างถอดออก เหลือเส้นคั่นบาง ๆ */
+.mfg-cmp .mfg-check-row,
+.mfg-cmp .mfg-check-row.mfg-check-ok,
+.mfg-cmp .mfg-check-row.mfg-check-bad {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-bottom: 1px solid #f1f5f9;
+  border-bottom-color: #f1f5f9;
+}
+
+.mfg-cmp .mfg-check-row:last-child {
+  border-bottom: none;
+}
+
+.mfg-cmp .mfg-check-row .mfg-check-value {
+  color: #0f172a;
+}
+
+.mfg-cmp-bad .mfg-check-row.mfg-check-bad .mfg-check-value {
+  color: #b91c1c;
+}
+
+/* ตรงกันทั้งหมดแล้ว ไม่ต้องมีติ๊กถูกซ้ำทุกค่า หัวกล่องบอกไปแล้ว */
+.mfg-cmp-ok .mfg-check-icon {
+  display: none;
+}
+
+/* กรณีไม่ตรง: ติ๊กถูกของช่องที่ผ่านยังอยู่ จะได้รู้ว่าตรวจอะไรไปแล้วบ้าง
+   แต่ย่อลงและทำให้จางกว่า ส่วนช่องที่ไม่ตรงเป็นสีแดงเต็มตัว */
+.mfg-check-box .mfg-check-icon.mfg-check-icon-ok {
+  background: #10b981;
+}
+
+.mfg-check-box .mfg-check-icon.mfg-check-icon-bad {
+  background: #ef4444;
+}
+
+.mfg-cmp-bad .mfg-check-icon.mfg-check-icon-ok {
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  background: #a7d9c2;
+}
+
+.mfg-cmp .mfg-check-row .mfg-check-value.mfg-check-value-bad {
+  color: #b91c1c;
+}
+
 /* ทะเบียนใบอนุญาต — ผลการอ่านไฟล์ และตารางประวัติการต่ออายุ */
 .ll-upload-line {
   display: flex;

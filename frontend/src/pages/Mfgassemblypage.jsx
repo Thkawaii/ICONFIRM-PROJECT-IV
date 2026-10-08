@@ -384,10 +384,13 @@ export default function MFGAssemblyPage() {
   }
   function itemHtml(machine, item, kanban = {}) {
     // cell = ช่อง label + ค่า 1 ช่อง · line = 1 บรรทัดเต็ม · pair = 2 ช่องในบรรทัดเดียว
+    // สถานะติดไว้ที่ตัวค่าและตัวไอคอนเอง ไม่ใช่ที่แถว
+    // เพราะแถวหนึ่งมีสองช่อง (Part# กับ Weight) ที่ผลไม่จำเป็นต้องเหมือนกัน
+    // ของเดิมอ่านสถานะจากแถว ✗ ของช่อง Weight จึงถูกระบายเป็นสีเขียวตามช่อง Part#
     const cell = (label, value, mono = true, state = '') => `
         <span class="mfg-check-label">${escapeHtml(label)}</span>
-        <span class="mfg-check-value${mono ? ' mono' : ''}">${escapeHtml(value || '—')}${
-          state ? `<i class="mfg-check-icon">${state === 'ok' ? '✓' : '✗'}</i>` : ''
+        <span class="mfg-check-value${mono ? ' mono' : ''}${state ? ' mfg-check-value-' + state : ''}">${escapeHtml(value || '—')}${
+          state ? `<i class="mfg-check-icon mfg-check-icon-${state}">${state === 'ok' ? '✓' : '✗'}</i>` : ''
         }</span>`;
     const line = (label, value, mono = true, state = '') => `
       <div class="mfg-check-row${state ? ' mfg-check-' + state : ''}">
@@ -424,29 +427,48 @@ export default function MFGAssemblyPage() {
     const wrongUnit = weightState === 'bad' && sameWeightNumber(kanbanWeight, masterWeight);
     const kanbanWeightLabel = wrongUnit ? 'Weight (Kanban) — คนละหน่วย' : 'Weight (Kanban)';
 
+    // บรรทัดที่ระบบเทียบให้ — ของที่ WH จ่าย/master_data เทียบกับที่เขียนบน Kanban
+    const compareRows = masterWeight ? pair({
+      label: fromMaster ? 'Part# (WH จ่าย)' : 'P/N',
+      value: item.issuedPartNo,
+      state
+    }, {
+      label: 'Weight (master_data)',
+      value: masterWeight,
+      state: weightState
+    }) + pair({
+      label: 'Part# (Kanban)',
+      value: kanbanPartNo,
+      state
+    }, {
+      label: kanbanWeightLabel,
+      value: kanbanWeight || 'ไม่ได้เขียนน้ำหนักมา',
+      state: weightState
+    }) : line(fromMaster ? 'Part# (WH จ่าย)' : 'P/N', item.issuedPartNo, true, state) + (fromMaster && kanbanPartNo ? line('Part# (Kanban)', kanbanPartNo, true, state) : '');
+
+    // ของเดิมบอกผลการเทียบซ้ำกันสี่ทาง — พื้นเขียว แถบเขียวซ้ายมือ ตัวอักษรเขียว
+    // และวงกลมติ๊กถูกต่อท้ายทุกค่า ทั้งที่คำตอบที่คนหน้างานต้องการมีข้อเดียวคือ "ตรงไหม"
+    // จึงสรุปผลไว้ที่หัวกล่องจุดเดียว แล้วปล่อยให้ตัวเลขเป็นสีดำอ่านง่าย ๆ
+    // เหลือสีแดงไว้เฉพาะช่องที่ไม่ตรงจริง ๆ สายตาจะพุ่งไปที่นั่นทันที
+    const checkStates = [state, masterWeight ? weightState : ''].filter(Boolean);
+    const verdict = checkStates.length === 0 ? '' : checkStates.includes('bad') ? 'bad' : 'ok';
+    const verdictNote = verdict === 'bad' ? 'ดูช่องที่ขึ้นสีแดง' : masterWeight ? 'Part# และน้ำหนักตรงกับ Kanban' : 'Part# ตรงกับ Kanban';
+    const compareBlock = verdict ? `
+      <div class="mfg-cmp mfg-cmp-${verdict}">
+        <div class="mfg-cmp-head">
+          <i class="mfg-cmp-mark">${verdict === 'ok' ? '✓' : '✗'}</i>
+          <span class="mfg-cmp-title">${verdict === 'ok' ? 'ตรงกัน' : 'ไม่ตรงกัน'}</span>
+          <span class="mfg-cmp-note">${verdictNote}</span>
+        </div>
+        <div class="mfg-cmp-body">${compareRows}</div>
+      </div>` : compareRows;
+
     return `
       <div class="mfg-check-box">
         ${line('MC#', machine.machineNo)}
         ${specCode ? line('Product Spec', specCode) : ''}
         ${line('ลูกค้า / ประเทศ', machine.customer, false)}
-        ${masterWeight ? pair({
-          label: fromMaster ? 'Part# (WH จ่าย)' : 'P/N',
-          value: item.issuedPartNo,
-          state
-        }, {
-          label: 'Weight (master_data)',
-          value: masterWeight,
-          state: weightState
-        }) : line(fromMaster ? 'Part# (WH จ่าย)' : 'P/N', item.issuedPartNo, true, state)}
-        ${masterWeight ? pair({
-          label: 'Part# (Kanban)',
-          value: kanbanPartNo,
-          state
-        }, {
-          label: kanbanWeightLabel,
-          value: kanbanWeight || 'ไม่ได้เขียนน้ำหนักมา',
-          state: weightState
-        }) : fromMaster && kanbanPartNo ? line('Part# (Kanban)', kanbanPartNo, true, state) : ''}
+        ${compareBlock}
         ${item.issuedSerialNo ? line('S/N', item.issuedSerialNo) : ''}
         ${line('จ่ายโดย', item.issuedBy, false)}
       </div>`;
