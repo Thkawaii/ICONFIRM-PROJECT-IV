@@ -87,6 +87,118 @@ func TestSameTons(t *testing.T) {
 	}
 }
 
+// เทียบน้ำหนักข้ามหน่วย — แปลงหน่วยก่อนเทียบ
+// (เคสจริง: master_data เขียน 6.2T แต่ Kanban เขียน 6.2KG = คนละน้ำหนัก 1000 เท่า)
+func TestSameTonsUnits(t *testing.T) {
+
+	// คนละหน่วย แต่เป็นน้ำหนักเดียวกัน → ต้องผ่าน
+	same := [][2]string{
+		{"6200KG", "6.2T"},
+		{"6.2T", "6200KG"},
+		{"6.2TON", "6.2T"},
+		{"6.2 TONNES", "6.2"},
+		{"6.2KGS", "6.2KG"},
+		{"4300KG", "4.3"},
+	}
+	for _, p := range same {
+		if !SameTons(p[0], p[1]) {
+			t.Errorf("SameTons(%q, %q) = false, want true", p[0], p[1])
+		}
+	}
+
+	// ตัวเลขเท่ากันแต่คนละหน่วย = คนละน้ำหนักจริง ๆ → ต้องไม่ผ่าน
+	diff := [][2]string{
+		{"6.2KG", "6.2T"},
+		{"6.2T", "6.2KG"},
+		{"4.3LB", "4.3T"},
+		{"6300KG", "6.2T"},
+	}
+	for _, p := range diff {
+		if SameTons(p[0], p[1]) {
+			t.Errorf("SameTons(%q, %q) = true, want false", p[0], p[1])
+		}
+	}
+
+	// ตัวเลขดิบเท่ากันไหม (ใช้เลือกข้อความแจ้งเตือน ไม่ได้ใช้ตัดสินถูกผิด)
+	if !SameWeightNumber("6.2KG", "6.2T") {
+		t.Error(`SameWeightNumber("6.2KG", "6.2T") = false, want true`)
+	}
+	if SameWeightNumber("6.2KG", "6.3T") {
+		t.Error(`SameWeightNumber("6.2KG", "6.3T") = true, want false`)
+	}
+}
+
+// น้ำหนักเขียนคั่นหลักพัน ("6,200KG") ต้องอ่านได้เป็น 6200 กก. ไม่ใช่ 6.2 หรือ 6
+func TestWeightThousandSeparator(t *testing.T) {
+	cases := []struct {
+		in   string
+		want float64
+		unit string
+	}{
+		{"6,200KG", 6200, "KG"},
+		{"6,200 kg", 6200, "KG"},
+		{"4,3T", 4.3, "T"},
+		{"4,30", 4.3, "T"},
+		{"1,250KG", 1250, "KG"},
+	}
+	for _, tc := range cases {
+		got, unit, ok := parseWeight(tc.in)
+		if !ok || got != tc.want || unit != tc.unit {
+			t.Errorf("parseWeight(%q) = %v %q, %v; want %v %q", tc.in, got, unit, ok, tc.want, tc.unit)
+		}
+	}
+
+	if !SameTons("6,200KG", "6.2T") {
+		t.Error(`SameTons("6,200KG", "6.2T") = false, want true`)
+	}
+}
+
+// จุลภาคในน้ำหนักบน Kanban ไปชนกับตัวคั่นช่องของ QR — ต้องต่อช่องกลับให้ถูก
+func TestParseSpecQRThousandSeparator(t *testing.T) {
+	raw := "YN30100010,LB08-0TOCBG1VU110,Indonesia,YN02B10321F1,YN12B20016F1," +
+		"800mm HD grouser shoe,LB60C00210P1_6,200KG,none,Indonesia,IT(Satellite)"
+
+	q, ok := ParseSpecQR(raw)
+	if !ok {
+		t.Fatal("ParseSpecQR = not ok, want ok")
+	}
+	if q.CWPN != "LB60C00210P1_6200KG" {
+		t.Errorf("CWPN = %q, want LB60C00210P1_6200KG", q.CWPN)
+	}
+	// ช่องหลัง CW ต้องไม่เลื่อน
+	if q.ITDevice != "IT(Satellite)" {
+		t.Errorf("ITDevice = %q, want IT(Satellite)", q.ITDevice)
+	}
+
+	pn, weight := splitKanbanPartNo(q.CWPN)
+	if pn != "LB60C00210P1" || weight != "6200KG" {
+		t.Errorf("splitKanbanPartNo = %q / %q, want LB60C00210P1 / 6200KG", pn, weight)
+	}
+	if !SameTons(weight, "6.2T") {
+		t.Errorf("SameTons(%q, 6.2T) = false, want true", weight)
+	}
+}
+
+// ช่องอื่นที่ขึ้นต้นด้วยตัวเลข 3 หลักต้องไม่ถูกต่อเข้าด้วยกันโดยพลาด
+func TestParseSpecQRKeepsShoeField(t *testing.T) {
+	raw := "YN15438324,YN15-0QD7BG131001,Singapore,YN02B10321F1,YN12B20016F1," +
+		"800mm HD grouser shoe,YN60C00942P1_4.3T,none,Singapore,IT(iridium)"
+
+	q, ok := ParseSpecQR(raw)
+	if !ok {
+		t.Fatal("ParseSpecQR = not ok, want ok")
+	}
+	if q.Shoe != "800mm HD grouser shoe" {
+		t.Errorf("Shoe = %q, want 800mm HD grouser shoe", q.Shoe)
+	}
+	if q.CWPN != "YN60C00942P1_4.3T" {
+		t.Errorf("CWPN = %q, want YN60C00942P1_4.3T", q.CWPN)
+	}
+	if q.ITDevice != "IT(iridium)" {
+		t.Errorf("ITDevice = %q, want IT(iridium)", q.ITDevice)
+	}
+}
+
 func TestSamePartNo(t *testing.T) {
 	cases := []struct {
 		a, b string

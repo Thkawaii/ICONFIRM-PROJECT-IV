@@ -115,44 +115,181 @@ func SamePartNo(a, b string) bool {
 	return ba == bb
 }
 
-// parseTons: อ่านน้ำหนักเป็นตัน จากค่าที่เขียนได้หลายแบบ
+// weightUnitAliases: หน่วยน้ำหนักที่เขียนได้หลายแบบ → หน่วยมาตรฐาน
 //
-//	"4.3T" / "4.3 Tons" / "4.30" / "4,3" → 4.3
-//	"" / "-" / "N/A"                     → ไม่ใช่ตัวเลข (ok = false)
-func parseTons(s string) (float64, bool) {
+// ค่าว่าง (ไม่เขียนหน่วย) ถือเป็น "ตัน" เพราะคอลัมน์ใน master_data คือ Weight (Tons)
+var weightUnitAliases = map[string]string{
+	"": "T",
+
+	"T": "T", "TON": "T", "TONS": "T", "TONNE": "T", "TONNES": "T", "MT": "T",
+
+	"KG": "KG", "KGS": "KG", "KGM": "KG", "KILOGRAM": "KG", "KILOGRAMS": "KG",
+
+	"G": "G", "GRAM": "G", "GRAMS": "G",
+
+	"LB": "LB", "LBS": "LB", "POUND": "LB", "POUNDS": "LB",
+}
+
+// normalizeNumberSeparators: จัดการ "," ในตัวเลขให้ถูกความหมาย
+//
+//	"6,200"   → "6200"   ← คั่นหลักพัน (หลัง "," มีเลข 3 ตัวพอดี)
+//	"4,3"     → "4.3"    ← จุดทศนิยมแบบยุโรป
+//	"6,200.5" → "6200.5"
+//
+// สำคัญกับ Kanban มาก เพราะถ้าอ่าน "6,200" เป็น 6.2 จะกลายเป็นน้ำหนักคนละตัว
+func normalizeNumberSeparators(s string) string {
+	for {
+		i := strings.Index(s, ",")
+		if i < 0 {
+			return s
+		}
+
+		digits := 0
+		for j := i + 1; j < len(s) && s[j] >= '0' && s[j] <= '9'; j++ {
+			digits++
+		}
+		prevIsDigit := i > 0 && s[i-1] >= '0' && s[i-1] <= '9'
+
+		if digits == 3 && prevIsDigit {
+			s = s[:i] + s[i+1:] // คั่นหลักพัน → ตัดทิ้ง
+			continue
+		}
+		s = s[:i] + "." + s[i+1:] // นอกนั้นถือเป็นจุดทศนิยม
+	}
+}
+
+// parseWeight: แยกค่าน้ำหนักออกเป็น "ตัวเลข" กับ "หน่วย"
+//
+//	"4.3T"     → 4.3, "T"
+//	"4.3 Tons" → 4.3, "T"
+//	"6.2KG"    → 6.2, "KG"
+//	"6.2"      → 6.2, "T"    (ไม่เขียนหน่วย = ตัน ตามคอลัมน์ Weight (Tons))
+//	"6.2XYZ"   → 6.2, "XYZ"  (หน่วยที่ไม่รู้จัก เก็บไว้ตามที่เขียนมา จะได้จับได้ว่าไม่ตรง)
+//	"" / "-"   → ไม่ใช่ตัวเลข (ok = false)
+func parseWeight(s string) (float64, string, bool) {
 	s = strings.ToUpper(strings.TrimSpace(unwrapExcelText(s)))
-	s = strings.ReplaceAll(s, ",", ".")
+	s = normalizeNumberSeparators(s)
 
 	var b strings.Builder
-	for _, r := range s {
+	rest := ""
+	for i, r := range s {
 		if (r >= '0' && r <= '9') || r == '.' {
 			b.WriteRune(r)
 			continue
 		}
 		if b.Len() > 0 {
-			break // เจอตัวอักษรหลังตัวเลขแล้ว (เช่น T / TON) → จบแค่นี้
+			rest = s[i:] // ตัวอักษรหลังตัวเลข = หน่วย
+			break
 		}
 	}
 
 	num := strings.Trim(b.String(), ".")
 	if num == "" {
-		return 0, false
+		return 0, "", false
 	}
 	v, err := strconv.ParseFloat(num, 64)
 	if err != nil {
-		return 0, false
+		return 0, "", false
 	}
-	return v, true
+
+	// เหลือเฉพาะตัวอักษรของหน่วย (ตัดเว้นวรรค จุด วงเล็บ ออก)
+	var u strings.Builder
+	for _, r := range rest {
+		if r >= 'A' && r <= 'Z' {
+			u.WriteRune(r)
+		}
+	}
+
+	unit := u.String()
+	if std, ok := weightUnitAliases[unit]; ok {
+		return v, std, true
+	}
+	return v, unit, true
 }
 
-// SameTons: น้ำหนักถ่วงสองค่าเท่ากันไหม (4.3T = 4.3 = 4.30)
-func SameTons(a, b string) bool {
-	fa, oka := parseTons(a)
-	fb, okb := parseTons(b)
+// parseTons: อ่านน้ำหนักเป็นตัวเลข (ไม่สนหน่วย)
+func parseTons(s string) (float64, bool) {
+	v, _, ok := parseWeight(s)
+	return v, ok
+}
+
+// weightToKG: อัตราแปลงหน่วย → กิโลกรัม (หน่วยที่ไม่อยู่ในตารางนี้ = แปลงไม่ได้)
+var weightToKG = map[string]float64{
+	"T":  1000,
+	"KG": 1,
+	"G":  0.001,
+	"LB": 0.45359237,
+}
+
+// weightInKG: อ่านน้ำหนักแล้วแปลงเป็นกิโลกรัม
+//
+//	"6.2T"   → 6200
+//	"6200KG" → 6200
+//	"6.2"    → 6200   (ไม่เขียนหน่วย = ตัน)
+//
+// ok = false เมื่ออ่านตัวเลขไม่ได้ หรือเขียนหน่วยที่ระบบไม่รู้จัก
+func weightInKG(s string) (float64, bool) {
+	v, unit, ok := parseWeight(s)
+	if !ok {
+		return 0, false
+	}
+	rate, known := weightToKG[unit]
+	if !known {
+		return 0, false
+	}
+	return v * rate, true
+}
+
+// SameWeightNumber: ตัวเลขน้ำหนักเท่ากันไหม โดยไม่สนหน่วยเลย
+//
+// ใช้แยกแยะเคส "ตัวเลขเดียวกันแต่คนละหน่วย" (6.2KG vs 6.2T = คนละน้ำหนัก 1000 เท่า)
+// ออกจากเคส "ตัวเลขผิดไปเลย" เพื่อให้ข้อความแจ้งเตือนชัดขึ้น
+func SameWeightNumber(a, b string) bool {
+	fa, _, oka := parseWeight(a)
+	fb, _, okb := parseWeight(b)
 	if !oka || !okb {
 		return false
 	}
-	diff := fa - fb
+	return nearlySameNumber(fa, fb)
+}
+
+// SameTons: น้ำหนักถ่วงสองค่าเป็นน้ำหนักเดียวกันไหม
+//
+// แปลงหน่วยให้ก่อนเทียบ จึงเทียบข้ามหน่วยได้
+//
+//	4.3T = 4.3 = 4.30 = "4.3 Tons"   ← เขียนคนละแบบ หน่วยเดียวกัน
+//	6.2T = 6200KG                     ← คนละหน่วย แต่เป็นน้ำหนักเดียวกัน
+//	6.2T ≠ 6.2KG                      ← ต่างกัน 1000 เท่า คนละน้ำหนักจริง ๆ
+//
+// หน่วยที่ระบบไม่รู้จัก (พิมพ์มาแปลก ๆ) จะแปลงไม่ได้ → ตกไปเทียบแบบตรงตัว
+// คือต้องเขียนหน่วยเหมือนกันเป๊ะและตัวเลขเท่ากัน
+func SameTons(a, b string) bool {
+	ka, oka := weightInKG(a)
+	kb, okb := weightInKG(b)
+	if oka && okb {
+		return nearlySameKG(ka, kb)
+	}
+
+	fa, ua, oa := parseWeight(a)
+	fb, ub, ob := parseWeight(b)
+	if !oa || !ob || ua != ub {
+		return false
+	}
+	return nearlySameNumber(fa, fb)
+}
+
+// nearlySameKG: ยอมคลาดเคลื่อนได้ไม่ถึง 5 กก. (= 0.005 ตัน กติกาเดิม)
+func nearlySameKG(a, b float64) bool {
+	diff := a - b
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff < 5
+}
+
+// nearlySameNumber: เทียบตัวเลขดิบ ยอมคลาดเคลื่อนได้ไม่ถึง 0.005
+func nearlySameNumber(a, b float64) bool {
+	diff := a - b
 	if diff < 0 {
 		diff = -diff
 	}
@@ -266,10 +403,20 @@ func checkKanbanPartNos(q SpecQR, specCode string, specRow map[string]string) Ka
 		// เพราะ CW รหัสเดียวกันมีได้หลายน้ำหนัก ถ้าไม่เทียบจะจับของผิดน้ำหนักไม่ได้เลย
 		if f.HasWeight {
 			if mw := masterDataWeightTonsOf(specRow); mw != "" {
-				if qrWeight == "" {
+				switch {
+				case qrWeight == "":
 					add(f.Component, "Weight (Tons)", "(ไม่มีน้ำหนักถ่วงต่อท้าย P/N)", mw, false)
-				} else {
-					add(f.Component, "Weight (Tons)", qrWeight, mw, SameTons(qrWeight, mw))
+
+				case SameTons(qrWeight, mw):
+					add(f.Component, "Weight (Tons)", qrWeight, mw, true)
+
+				// ตัวเลขเท่ากันแต่คนละหน่วย (เช่น 6.2KG กับ 6.2T = ต่างกัน 1000 เท่า)
+				// แยกข้อความออกมา เพราะคนอ่านมักมองผ่านว่า "ก็ 6.2 เหมือนกัน"
+				case SameWeightNumber(qrWeight, mw):
+					add(f.Component, "Weight — ตัวเลขเท่ากันแต่คนละหน่วย", qrWeight, mw, false)
+
+				default:
+					add(f.Component, "Weight (Tons)", qrWeight, mw, false)
 				}
 			}
 		}

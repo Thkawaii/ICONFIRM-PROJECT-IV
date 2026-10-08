@@ -257,12 +257,48 @@ func LooksLikeSpecQR(raw string) bool {
 	return strings.Count(raw, ",") >= 5
 }
 
+// kanbanWeightTail: ช่องที่หลุดมาเพราะน้ำหนักเขียนคั่นหลักพัน
+// ต้องเป็น "ตัวเลข 3 หลัก" ตามด้วยหน่วยน้ำหนัก (หรือไม่มีหน่วยก็ได้) เท่านั้น
+//
+//	"200KG" / "200 kg" / "200T" / "200"  → ใช่
+//	"800mm HD grouser shoe"              → ไม่ใช่ (มีข้อความอื่นต่อท้าย)
+var kanbanWeightTail = regexp.MustCompile(`(?i)^[0-9]{3}\s*(KGS?|KILOGRAMS?|TONN?E?S?|MT|T|G|LBS?)?$`)
+
+// kanbanWeightHead: ช่องก่อนหน้า ต้องลงท้ายด้วย "_ตัวเลข" หรือ "#ตัวเลข" แบบไม่มีหน่วย
+//
+//	"LB60C00210P1_6" → ใช่   (มาจาก "LB60C00210P1_6,200KG" ที่ถูกจุลภาคตัดขาด)
+//	"YN12B20016F1"   → ไม่ใช่
+var kanbanWeightHead = regexp.MustCompile(`[_#][0-9]{1,3}$`)
+
+// mergeKanbanThousandSeparator: ต่อช่องที่ถูกจุลภาคตัดขาดกลับคืน
+//
+// QR บน Kanban ใช้ "," เป็นตัวคั่นช่อง ถ้าน้ำหนักถ่วงเขียนคั่นหลักพัน
+// (เช่น LB60C00210P1_6,200KG) จุลภาคนั้นจะถูกนับเป็นตัวคั่นช่องไปด้วย
+// ทำให้ช่อง CW กลายเป็น "LB60C00210P1_6" และช่องที่เหลือเลื่อนไปทั้งแถว
+//
+// ฟังก์ชันนี้ตรวจรูปแบบนั้นโดยเฉพาะแล้วต่อกลับให้เป็น "LB60C00210P1_6200KG"
+// เงื่อนไขแคบมากเพื่อไม่ให้ไปโดนช่องอื่นที่ขึ้นต้นด้วยตัวเลข เช่น "800mm HD grouser shoe"
+func mergeKanbanThousandSeparator(f []string) []string {
+	out := make([]string, 0, len(f))
+	for i := 0; i < len(f); i++ {
+		cur := f[i]
+		for i+1 < len(f) &&
+			kanbanWeightHead.MatchString(strings.TrimSpace(cur)) &&
+			kanbanWeightTail.MatchString(strings.TrimSpace(f[i+1])) {
+			cur = strings.TrimSpace(cur) + strings.TrimSpace(f[i+1])
+			i++
+		}
+		out = append(out, cur)
+	}
+	return out
+}
+
 func ParseSpecQR(raw string) (SpecQR, bool) {
 	raw = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(raw, "\r", " "), "\n", " "))
 	if !LooksLikeSpecQR(raw) {
 		return SpecQR{}, false
 	}
-	f := strings.Split(raw, ",")
+	f := mergeKanbanThousandSeparator(strings.Split(raw, ","))
 	get := func(i int) string {
 		if i < len(f) {
 			return strings.TrimSpace(f[i])

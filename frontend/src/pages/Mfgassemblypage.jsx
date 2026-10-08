@@ -255,11 +255,30 @@ export default function MFGAssemblyPage() {
     if (item.component === 'ITC' && machine.itDevice) return machine.itDevice;
     return item.label;
   }
+  // QR บน Kanban ใช้ "," เป็นตัวคั่นช่อง ถ้าน้ำหนักถ่วงเขียนคั่นหลักพัน
+  // (เช่น LB60C00210P1_6,200KG) จุลภาคนั้นจะถูกนับเป็นตัวคั่นช่องไปด้วย
+  // ทำให้อ่านน้ำหนักได้แค่ "6" และช่องที่เหลือเลื่อนไปทั้งแถว — ต่อกลับให้ก่อน
+  // เงื่อนไขแคบมาก เพื่อไม่ให้ไปโดนช่องอื่นที่ขึ้นต้นด้วยตัวเลข เช่น "800mm HD grouser shoe"
+  const WEIGHT_HEAD = /[_#][0-9]{1,3}$/;
+  const WEIGHT_TAIL = /^[0-9]{3}\s*(KGS?|KILOGRAMS?|TONN?E?S?|MT|T|G|LBS?)?$/i;
+  function mergeThousandSeparator(fields) {
+    const out = [];
+    for (let i = 0; i < fields.length; i++) {
+      let cur = fields[i];
+      while (i + 1 < fields.length && WEIGHT_HEAD.test(String(cur).trim()) && WEIGHT_TAIL.test(String(fields[i + 1]).trim())) {
+        cur = String(cur).trim() + String(fields[i + 1]).trim();
+        i++;
+      }
+      out.push(cur);
+    }
+    return out;
+  }
+
   // ดึงค่า Part# ที่ติดมากับ QR ของ Kanban
   // หมายเหตุ: QR มี P/N ของ Counter Weight ช่องเดียว (ช่องที่ 7 เขียนเป็น "P/N_น้ำหนัก")
   // ส่วน CV / SM / MP / PH ไม่มีอยู่บน Kanban จึงดึงมาแสดงไม่ได้
   function parseKanbanParts(qrCode) {
-    const f = String(qrCode || '').split(',');
+    const f = mergeThousandSeparator(String(qrCode || '').split(','));
     if (f.length < 7) return {};
     // ช่อง CW เขียนติดกันสองอย่าง: "รหัส P/N" _ "น้ำหนักถ่วง" เช่น YN60C00942P1_4.3T
     const cw = String(f[6] || '').trim();
@@ -270,17 +289,89 @@ export default function MFGAssemblyPage() {
     };
   }
 
-  // อ่านน้ำหนักเป็นตัวเลข — รับได้ทั้ง "4.3T", "4.3", "4,3"
-  function parseTons(v) {
-    const m = String(v || '').replace(',', '.').match(/[0-9]*\.?[0-9]+/);
-    return m ? parseFloat(m[0]) : null;
+  // หน่วยน้ำหนักที่เขียนได้หลายแบบ → หน่วยมาตรฐาน (กติกาเดียวกับ backend)
+  // ไม่เขียนหน่วย = ตัน เพราะคอลัมน์ใน master_data คือ Weight (Tons)
+  const WEIGHT_UNITS = {
+    '': 'T',
+    T: 'T',
+    TON: 'T',
+    TONS: 'T',
+    TONNE: 'T',
+    TONNES: 'T',
+    MT: 'T',
+    KG: 'KG',
+    KGS: 'KG',
+    KGM: 'KG',
+    KILOGRAM: 'KG',
+    KILOGRAMS: 'KG',
+    G: 'G',
+    GRAM: 'G',
+    GRAMS: 'G',
+    LB: 'LB',
+    LBS: 'LB',
+    POUND: 'LB',
+    POUNDS: 'LB'
+  };
+
+  // อ่านน้ำหนักเป็น { value, unit } — รับได้ทั้ง "4.3T", "4.3 Tons", "6.2KG", "4,3"
+  // "6,200" → "6200" (คั่นหลักพัน) / "4,3" → "4.3" (จุดทศนิยมแบบยุโรป)
+  function normalizeNumberSeparators(v) {
+    let s = String(v || '');
+    // วนจนไม่เหลือตัวคั่นหลักพัน (เช่น "1,000,000")
+    for (;;) {
+      const next = s.replace(/(\d),(\d{3})(?!\d)/, '$1$2');
+      if (next === s) break;
+      s = next;
+    }
+    return s.replace(/,/g, '.');
   }
-  // ยอมคลาดเคลื่อนได้ไม่ถึง 0.005 ตัน (5 กก.) — กติกาเดียวกับฝั่ง backend
+  function parseWeight(v) {
+    const s = normalizeNumberSeparators(String(v || '')).trim().toUpperCase();
+    const m = s.match(/([0-9]*\.?[0-9]+)\s*([A-Z]*)/);
+    if (!m) return null;
+    const value = parseFloat(m[1]);
+    if (Number.isNaN(value)) return null;
+    const raw = m[2] || '';
+    return {
+      value,
+      unit: WEIGHT_UNITS[raw] || raw
+    };
+  }
+  // อัตราแปลงหน่วย → กิโลกรัม (หน่วยที่ไม่อยู่ในตารางนี้ = แปลงไม่ได้)
+  const WEIGHT_TO_KG = {
+    T: 1000,
+    KG: 1,
+    G: 0.001,
+    LB: 0.45359237
+  };
+  function weightInKg(v) {
+    const w = parseWeight(v);
+    if (!w) return null;
+    const rate = WEIGHT_TO_KG[w.unit];
+    if (!rate) return null;
+    return w.value * rate;
+  }
+  // ตัวเลขเท่ากันไหม โดยไม่สนหน่วย — ใช้แยกกรณี "ตัวเลขเดียวกันแต่คนละหน่วย"
+  function sameWeightNumber(a, b) {
+    const x = parseWeight(a);
+    const y = parseWeight(b);
+    if (!x || !y) return false;
+    return Math.abs(x.value - y.value) < 0.005;
+  }
+  // น้ำหนักเดียวกันไหม — แปลงหน่วยให้ก่อนเทียบ (กติกาเดียวกับฝั่ง backend)
+  //   6.2T = 6200KG  ← คนละหน่วย แต่น้ำหนักเท่ากัน
+  //   6.2T ≠ 6.2KG   ← ต่างกัน 1000 เท่า
+  // ยอมคลาดเคลื่อนได้ไม่ถึง 5 กก.
   function sameTons(a, b) {
-    const x = parseTons(a);
-    const y = parseTons(b);
-    if (x === null || y === null) return false;
-    return Math.abs(x - y) < 0.005;
+    const ka = weightInKg(a);
+    const kb = weightInKg(b);
+    if (ka !== null && kb !== null) return Math.abs(ka - kb) < 5;
+
+    // หน่วยที่ระบบไม่รู้จัก — ต้องเขียนเหมือนกันเป๊ะและตัวเลขเท่ากัน
+    const x = parseWeight(a);
+    const y = parseWeight(b);
+    if (!x || !y || x.unit !== y.unit) return false;
+    return Math.abs(x.value - y.value) < 0.005;
   }
   function samePartNo(a, b) {
     const clean = v => {
@@ -328,6 +419,10 @@ export default function MFGAssemblyPage() {
     if (masterWeight) {
       weightState = kanbanWeight && sameTons(kanbanWeight, masterWeight) ? 'ok' : 'bad';
     }
+    // ตัวเลขเท่ากันแต่คนละหน่วย (เช่น 6.2KG กับ 6.2T = ต่างกัน 1000 เท่า) — บอกให้ชัด
+    // ไม่งั้นคนอ่านจะมองผ่านว่า "ก็ 6.2 เหมือนกัน"
+    const wrongUnit = weightState === 'bad' && sameWeightNumber(kanbanWeight, masterWeight);
+    const kanbanWeightLabel = wrongUnit ? 'Weight (Kanban) — คนละหน่วย' : 'Weight (Kanban)';
 
     return `
       <div class="mfg-check-box">
@@ -348,7 +443,7 @@ export default function MFGAssemblyPage() {
           value: kanbanPartNo,
           state
         }, {
-          label: 'Weight (Kanban)',
+          label: kanbanWeightLabel,
           value: kanbanWeight || 'ไม่ได้เขียนน้ำหนักมา',
           state: weightState
         }) : fromMaster && kanbanPartNo ? line('Part# (Kanban)', kanbanPartNo, true, state) : ''}

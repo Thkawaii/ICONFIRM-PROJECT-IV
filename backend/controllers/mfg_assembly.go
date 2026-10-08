@@ -486,6 +486,18 @@ func ScanMFGAssembly(c *gin.Context) {
 	resolver := newMFGPlanResolver()
 
 	if resolver.planOf(resolveMachineNo(machineNo)) == nil && mfgCodeIsPart(machineNo) {
+
+		// สแกนบาร์โค้ดพาร์ทมาในช่อง Machine No — เก็บไว้ตรวจย้อนหลัง
+		LogInvalidData(c, InvalidData{
+			SourceTable: "MFG_ASSEMBLY",
+			Action:      "scan_invalid",
+			MachineNo:   machineNo,
+			Component:   partType,
+			Field:       "Machine No",
+			WrongValue:  machineNo,
+			Reason:      "ค่าที่สแกนเป็นรหัสพาร์ท ไม่ใช่ Machine No และไม่มีในแผนประกอบ",
+		})
+
 		c.JSON(422, gin.H{
 			"message":        "ข้อมูลไม่ถูกต้อง",
 			"invalidMachine": true,
@@ -535,8 +547,17 @@ func ScanMFGAssembly(c *gin.Context) {
 			c.JSON(500, gin.H{"message": err.Error()})
 			return
 		}
-		CreateAuditLog("MFG_ASSEMBLY", row.ID, "scan_retired_format",
-			machineNo+"/"+models.MFGStatusRetiredFormat, userID, name)
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "MFG_ASSEMBLY",
+			SourceID:     row.ID,
+			Action:       "scan_retired_format",
+			MachineNo:    machineNo,
+			Component:    partType,
+			Field:        "รูปแบบรหัส",
+			WrongValue:   firstNonEmpty(itcNo, machineNo),
+			CorrectValue: CurrentCodeOf(firstNonEmpty(itcNo, machineNo)),
+			Reason:       msg,
+		})
 
 		c.JSON(201, gin.H{
 			"row":           row,
@@ -679,7 +700,38 @@ func ScanMFGAssembly(c *gin.Context) {
 
 	applyMFGPlan(&row, plan)
 
-	CreateAuditLog("MFG_ASSEMBLY", row.ID, action, machineNo+"/"+row.Status, userID, name)
+	if row.Status == models.MFGStatusMatched {
+		CreateAuditLog("MFG_ASSEMBLY", row.ID, action, machineNo+"/"+row.Status, userID, name)
+	} else {
+
+		// สแกนแล้วไม่ตรงแผน — เก็บทั้งค่าที่สแกนได้และค่าที่ถูกต้อง
+		field := "IT Controller No"
+		wrong := firstNonEmpty(plan.ScannedITC, itcNo)
+		correct := plan.PlannedITC
+		reason := firstNonEmpty(plan.Detail, plan.Message)
+
+		if partFailed {
+			field = "P/N"
+			wrong = firstNonEmpty(scanPartNo, scanSerialNo)
+			correct = ""
+			reason = firstNonEmpty(itcCheck.Detail, itcCheck.Message)
+		}
+		if reason == "" {
+			reason = "สแกนไม่ตรงกับแผนประกอบของเครื่อง " + machineNo
+		}
+
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "MFG_ASSEMBLY",
+			SourceID:     row.ID,
+			Action:       action + "_invalid",
+			MachineNo:    machineNo,
+			Component:    firstNonEmpty(row.Component, plan.Component, partType),
+			Field:        field,
+			WrongValue:   wrong,
+			CorrectValue: correct,
+			Reason:       reason,
+		})
+	}
 
 	message := mfgFinalMessage(row.Status, plan, row.WHLicenseNo)
 	detail := plan.Detail
@@ -820,7 +872,38 @@ func scanMFGKanban(c *gin.Context, resolver *mfgPlanResolver, machineNo, qrCode 
 	}
 
 	applyMFGPlan(&row, plan)
-	CreateAuditLog("MFG_ASSEMBLY", row.ID, action, machineNo+"/"+row.Status, userID, name)
+
+	if row.Status == models.MFGStatusMatched {
+		CreateAuditLog("MFG_ASSEMBLY", row.ID, action, machineNo+"/"+row.Status, userID, name)
+	} else {
+
+		// สแกน Kanban แล้วไม่ผ่าน — เก็บค่าบน Kanban คู่กับค่าตามแผน
+		field := "Kanban"
+		wrong := firstNonEmpty(qrCustomer, qrCode)
+		correct := ""
+		reason := firstNonEmpty(plan.Detail, plan.Message)
+
+		if customer.Blocked() {
+			field = "ลูกค้า / ประเทศ"
+			wrong = customer.QR
+			correct = customer.Plan
+			reason = customer.Detail
+		}
+		if reason == "" {
+			reason = "Kanban ของเครื่อง " + machineNo + " ไม่ตรงกับแผน"
+		}
+
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "MFG_ASSEMBLY",
+			SourceID:     row.ID,
+			Action:       action + "_invalid",
+			MachineNo:    machineNo,
+			Field:        field,
+			WrongValue:   wrong,
+			CorrectValue: correct,
+			Reason:       reason,
+		})
+	}
 
 	message := mfgFinalMessage(row.Status, plan, "")
 	detail := plan.Detail
