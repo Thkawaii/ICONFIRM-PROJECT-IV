@@ -614,6 +614,17 @@ func IssueFlowPart(c *gin.Context) {
 	machineNo := strings.ToUpper(strings.TrimSpace(req.MachineNo))
 	alloc := flowAllocIndex()
 	if flowAllocFor(alloc, machineNo) == nil {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable: "WH_FLOW_ISSUE",
+			Action:      "issue_invalid",
+			MachineNo:   machineNo,
+			Component:   component,
+			Field:       "Machine No",
+			WrongValue:  machineNo,
+			Reason:      "ไม่พบเครื่อง " + machineNo + " ในไฟล์ Planning WH",
+		})
+
 		c.JSON(404, gin.H{"message": "ไม่พบเครื่อง " + machineNo + " ในไฟล์ Planning WH"})
 		return
 	}
@@ -633,6 +644,18 @@ func IssueFlowPart(c *gin.Context) {
 	if component == "" {
 		component = detectFlowComponent(machine, scannedPN, scannedSN)
 		if component == "" {
+
+			// เก็บของที่สแกนผิดไว้ตรวจย้อนหลัง (ไม่ได้บันทึกเป็นการจ่ายของ)
+			LogInvalidData(c, InvalidData{
+				SourceTable:  "WH_FLOW_ISSUE",
+				Action:       "issue_invalid",
+				MachineNo:    machineNo,
+				Field:        "Part#",
+				WrongValue:   firstNonEmpty(scannedPN, scannedSN),
+				CorrectValue: flowExpectedList(machine),
+				Reason:       "Part# ที่สแกนไม่ตรงกับของที่เครื่องนี้ต้องใช้",
+			})
+
 			c.JSON(200, gin.H{
 				"matched": false,
 				"status":  FlowStatusMismatch,
@@ -658,6 +681,17 @@ func IssueFlowPart(c *gin.Context) {
 	}
 
 	if item.Status == FlowStatusNoPlan {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable: "WH_FLOW_ISSUE",
+			Action:      "issue_invalid",
+			MachineNo:   machineNo,
+			Component:   component,
+			Field:       label,
+			WrongValue:  firstNonEmpty(scannedPN, scannedSN),
+			Reason:      "ไม่มีแผนจ่าย " + label + " ของเครื่องนี้ — " + item.Message,
+		})
+
 		c.JSON(200, gin.H{
 			"matched": false,
 			"status":  FlowStatusNoPlan,
@@ -669,10 +703,32 @@ func IssueFlowPart(c *gin.Context) {
 
 	// ต้องสแกนอะไรบ้าง ดูจากแผนที่ WH อัปโหลด ไม่ได้ตายตัวตามชนิดของ
 	if item.ExpectedPartNo != "" && scannedPN == "" {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "WH_FLOW_ISSUE",
+			Action:       "issue_invalid",
+			MachineNo:    machineNo,
+			Component:    component,
+			Field:        "P/N",
+			CorrectValue: item.ExpectedPartNo,
+			Reason:       label + " ยังไม่ได้สแกน P/N",
+		})
+
 		c.JSON(400, gin.H{"message": label + " ต้องสแกน P/N ด้วย"})
 		return
 	}
 	if item.ExpectedSerialNo != "" && scannedSN == "" {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "WH_FLOW_ISSUE",
+			Action:       "issue_invalid",
+			MachineNo:    machineNo,
+			Component:    component,
+			Field:        "S/N#",
+			CorrectValue: item.ExpectedSerialNo,
+			Reason:       label + " ยังไม่ได้สแกน S/N#",
+		})
+
 		c.JSON(400, gin.H{"message": label + " ต้องสแกน S/N ด้วย"})
 		return
 	}
@@ -684,15 +740,46 @@ func IssueFlowPart(c *gin.Context) {
 		expectedFrom = "master_data (Product Spec " + orDash(machine.SpecCode) + ")"
 	}
 
+	// wrongField = ช่องที่สแกนผิด 1 ช่อง — เก็บคู่ "ค่าที่สแกนได้" กับ "ค่าที่ถูกต้อง"
+	// ไว้ลงตาราง audit_logs
+	type wrongField struct {
+		field    string
+		scanned  string
+		expected string
+		reason   string
+	}
+
 	var problems []string
+	var wrongs []wrongField
+
 	if item.ExpectedPartNo != "" && scannedPN != "" && !SameCode(scannedPN, item.ExpectedPartNo) {
-		problems = append(problems, expectedFrom+" กำหนด P/N "+item.ExpectedPartNo+" แต่สแกนได้ "+scannedPN)
+		msg := expectedFrom + " กำหนด P/N " + item.ExpectedPartNo + " แต่สแกนได้ " + scannedPN
+		problems = append(problems, msg)
+		wrongs = append(wrongs, wrongField{"P/N", scannedPN, item.ExpectedPartNo, msg})
 	}
 	if item.ExpectedSerialNo != "" && scannedSN != "" && !SameCode(scannedSN, item.ExpectedSerialNo) {
-		problems = append(problems, expectedFrom+" กำหนด S/N# "+item.ExpectedSerialNo+" แต่สแกนได้ "+scannedSN)
+		msg := expectedFrom + " กำหนด S/N# " + item.ExpectedSerialNo + " แต่สแกนได้ " + scannedSN
+		problems = append(problems, msg)
+		wrongs = append(wrongs, wrongField{"S/N#", scannedSN, item.ExpectedSerialNo, msg})
 	}
 
 	if len(problems) > 0 {
+
+		// สแกนไม่ตรงแผน — ระบบไม่บันทึกการจ่ายของ แต่เก็บทั้งค่าที่ผิดและค่าที่ถูก
+		// ลง audit_logs ช่องละ 1 แถว เพื่อตรวจย้อนหลังได้ว่าผิดที่ P/N หรือ S/N#
+		for _, w := range wrongs {
+			LogInvalidData(c, InvalidData{
+				SourceTable:  "WH_FLOW_ISSUE",
+				Action:       "issue_invalid",
+				MachineNo:    machineNo,
+				Component:    component,
+				Field:        w.field,
+				WrongValue:   w.scanned,
+				CorrectValue: w.expected,
+				Reason:       w.reason,
+			})
+		}
+
 		c.JSON(200, gin.H{
 			"matched": false,
 			"status":  FlowStatusMismatch,
@@ -704,6 +791,17 @@ func IssueFlowPart(c *gin.Context) {
 
 	// ของชิ้นนี้ถูกจ่ายให้เครื่องอื่นไปแล้วหรือยัง
 	if owner := flowSerialOwner(component, scannedPN, scannedSN, machineNo); owner != "" {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable: "WH_FLOW_ISSUE",
+			Action:      "issue_invalid",
+			MachineNo:   machineNo,
+			Component:   component,
+			Field:       label,
+			WrongValue:  firstNonEmpty(scannedSN, scannedPN),
+			Reason:      label + " นี้ถูกจ่ายให้เครื่อง " + owner + " ไปแล้ว",
+		})
+
 		c.JSON(200, gin.H{
 			"matched": false,
 			"status":  FlowStatusMismatch,
@@ -777,11 +875,9 @@ func detectFlowComponent(machine FlowMachine, partNo, serialNo string) string {
 	return ""
 }
 
-// flowExpectedSummary: รายการที่ระบบคาดว่าจะได้รับของเครื่องนี้ (ใช้บอกตอนสแกนไม่ตรง)
-//
-//	IT Controller / Engine        → มาจากไฟล์ Planning WH
-//	CW / CV / SM / MP / Pump HYD  → มาจาก master_data ตาม Product Spec ของเครื่อง
-func flowExpectedSummary(machine FlowMachine) string {
+// flowExpectedList: รายการค่าที่ถูกต้องของเครื่องนี้ เขียนต่อกันบรรทัดเดียว
+// ("" = ยังไม่รู้ว่าเครื่องนี้ต้องใช้ของอะไร) ใช้ทั้งในข้อความแจ้งเตือนและใน audit log
+func flowExpectedList(machine FlowMachine) string {
 	parts := make([]string, 0, len(machine.Items))
 	for _, it := range machine.Items {
 		if it.ExpectedPartNo == "" {
@@ -793,7 +889,16 @@ func flowExpectedSummary(machine FlowMachine) string {
 		}
 		parts = append(parts, s)
 	}
-	if len(parts) == 0 {
+	return strings.Join(parts, " · ")
+}
+
+// flowExpectedSummary: รายการที่ระบบคาดว่าจะได้รับของเครื่องนี้ (ใช้บอกตอนสแกนไม่ตรง)
+//
+//	IT Controller / Engine        → มาจากไฟล์ Planning WH
+//	CW / CV / SM / MP / Pump HYD  → มาจาก master_data ตาม Product Spec ของเครื่อง
+func flowExpectedSummary(machine FlowMachine) string {
+	expected := flowExpectedList(machine)
+	if expected == "" {
 		if strings.TrimSpace(machine.SpecCode) == "" {
 			return "เครื่องนี้ยังไม่รู้ Product Spec — กรุณาอัปโหลดไฟล์ Planning WH ที่มีคอลัมน์ Product Spec"
 		}
@@ -801,7 +906,7 @@ func flowExpectedSummary(machine FlowMachine) string {
 			" ใน master_data — กรุณาอัปโหลด master_data ล่าสุด"
 	}
 	return "Part# นี้ไม่ตรงกับของที่เครื่องนี้ต้องใช้ (Product Spec " +
-		orDash(machine.SpecCode) + ") — " + strings.Join(parts, " · ")
+		orDash(machine.SpecCode) + ") — " + expected
 }
 
 // flowSerialOwner: เลขของชิ้นนี้ถูกจ่ายให้เครื่องอื่นไปแล้วหรือไม่ ("" = ยังไม่ถูกจ่าย)
@@ -873,6 +978,93 @@ type FlowKanbanRequest struct {
 	MachineNo string `json:"machineNo"`
 }
 
+// ---------------------------------------------------------------------------
+// ข้อมูล Kanban ที่ถูกต้องของเครื่องหนึ่ง — ใช้ตอนเก็บ audit log
+// ทำแบบเดียวกับฝั่ง WH ที่ใช้ flowExpectedList
+// ---------------------------------------------------------------------------
+
+// kanbanExpectedList: ข้อมูลที่ "ควรจะอยู่บน Kanban" ของเครื่องนี้ เขียนต่อกันบรรทัดเดียว
+//
+//	MC#: YN30100003 · Product Spec: YN15-0QD7BG131001 · ลูกค้า / ประเทศ: Singapore · CW P/N: YN60C00942P1_4.3T
+//
+// ("" = ยังไม่รู้ข้อมูลของเครื่องนี้เลย)
+func kanbanExpectedList(machineNo string, allocRow map[string]string, specs map[string]map[string]string) string {
+
+	parts := make([]string, 0, 4)
+
+	if v := strings.TrimSpace(machineNo); v != "" {
+		parts = append(parts, "MC#: "+v)
+	}
+
+	specCode, _ := flowPlanSpecCodeOf(allocRow, machineNo)
+	if specCode != "" {
+		parts = append(parts, "Product Spec: "+specCode)
+	}
+
+	if v := checkKanbanCustomerRow(machineNo, "", allocRow).Plan; v != "" {
+		parts = append(parts, "ลูกค้า / ประเทศ: "+v)
+	}
+
+	if specRow := specs[NormalizeCodeValue(specCode)]; specRow != nil {
+		if pn := masterDataPartNoOf(specRow, ComponentCW); pn != "" {
+			cw := "CW P/N: " + pn
+			if w := masterDataWeightTonsOf(specRow); w != "" {
+				cw += "_" + w
+			}
+			parts = append(parts, cw)
+		}
+	}
+
+	return strings.Join(parts, " · ")
+}
+
+// logKanbanMissingFields: ช่องบน Kanban ที่ "ขาด / ไม่ครบ"
+//
+// อ่าน QR ได้ แต่บางช่องว่าง — ระบบยังทำงานต่อได้ (ไปข้ามการตรวจข้อนั้น)
+// จึงไม่บล็อก แต่เก็บลง audit log ไว้ทุกช่อง พร้อมค่าที่ถูกต้อง
+// เพื่อตรวจย้อนหลังได้ว่า Kanban ใบไหนพิมพ์มาไม่ครบ
+func logKanbanMissingFields(c *gin.Context, machineNo string, q SpecQR,
+	allocRow map[string]string, specs map[string]map[string]string) {
+
+	specCode, _ := flowPlanSpecCodeOf(allocRow, machineNo)
+	specRow := specs[NormalizeCodeValue(specCode)]
+	if specRow == nil && !specCodeValueEmpty(q.SpecCode) {
+		specRow = specs[NormalizeCodeValue(q.SpecCode)]
+	}
+
+	miss := func(field, correct, reason string) {
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "MFG_FLOW_ISSUE",
+			Action:       "kanban_incomplete",
+			MachineNo:    machineNo,
+			Field:        field,
+			WrongValue:   "(ไม่มีค่าบน Kanban)",
+			CorrectValue: correct,
+			Reason:       reason,
+		})
+	}
+
+	if specCodeValueEmpty(q.SpecCode) {
+		miss("Product Spec", specCode, "QR บน Kanban ไม่มีช่อง Product Spec")
+	}
+
+	if customerValueEmpty(q.Customer) {
+		miss("ลูกค้า / ประเทศ", checkKanbanCustomerRow(machineNo, "", allocRow).Plan,
+			"QR บน Kanban ไม่มีช่องลูกค้า / ประเทศ")
+	}
+
+	// CW P/N ขาด → เทียบน้ำหนักถ่วงกับ master_data ไม่ได้เลย
+	// (ถ้ามี CW P/N แต่ขาดน้ำหนักต่อท้าย จะถูกจับเป็น "ไม่ตรง" ใน partCheck อยู่แล้ว)
+	if strings.TrimSpace(unwrapExcelText(q.CWPN)) == "" {
+		correct := masterDataPartNoOf(specRow, ComponentCW)
+		if w := masterDataWeightTonsOf(specRow); correct != "" && w != "" {
+			correct += "_" + w
+		}
+		miss("CW P/N", correct,
+			"QR บน Kanban ไม่มีช่อง CW P/N จึงเทียบ P/N และน้ำหนักถ่วงกับ master_data ไม่ได้")
+	}
+}
+
 // ScanFlowKanban: POST /mfg-flow/kanban
 // MFG สแกน QR บน Kanban → ระบบคืน MC#, Product Spec และของที่ WH จ่ายมา
 func ScanFlowKanban(c *gin.Context) {
@@ -900,6 +1092,26 @@ func ScanFlowKanban(c *gin.Context) {
 			// มี "," แต่ยังไม่ครบช่อง = เครื่องสแกนส่งมาไม่หมด
 			// ห้ามตัดเศษข้อความไปใช้เป็น MC# เพราะจะกลายเป็น "ข้อมูลไม่ถูกต้อง" ทั้งที่แค่ยิงไม่ครบ
 			if strings.Contains(raw, ",") {
+
+				// เดา MC# จากช่องแรก เพื่อดึง "ข้อมูล Kanban ที่ถูกต้อง" มาเก็บคู่กันไว้
+				hint := strings.ToUpper(strings.TrimSpace(strings.Split(raw, ",")[0]))
+				expected := ""
+				if allocHint := flowAllocFor(flowAllocIndex(), hint); allocHint != nil {
+					expected = kanbanExpectedList(hint, allocHint, flowSpecIndex())
+				} else {
+					hint = ""
+				}
+
+				LogInvalidData(c, InvalidData{
+					SourceTable:  "MFG_FLOW_ISSUE",
+					Action:       "kanban_incomplete",
+					MachineNo:    hint,
+					Field:        "QR Kanban",
+					WrongValue:   raw,
+					CorrectValue: expected,
+					Reason:       "QR บน Kanban อ่านมาได้ไม่ครบทุกช่อง",
+				})
+
 				c.JSON(200, gin.H{
 					"found":          false,
 					"message":        FlowMsgScanIncomplete,
@@ -914,6 +1126,15 @@ func ScanFlowKanban(c *gin.Context) {
 	}
 
 	if machineNo == "" {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable: "MFG_FLOW_ISSUE",
+			Action:      "kanban_invalid",
+			Field:       "Machine No",
+			WrongValue:  raw,
+			Reason:      "อ่าน MC# จาก QR บน Kanban ไม่ได้",
+		})
+
 		c.JSON(200, gin.H{
 			"found":   false,
 			"message": FlowMsgInvalid,
@@ -930,6 +1151,17 @@ func ScanFlowKanban(c *gin.Context) {
 	// ไม่ได้พึ่งไฟล์นั้นแล้ว จึงไปต่อได้ถ้า Product Spec บน Kanban มีอยู่ใน master_data
 	knownSpec := !specCodeValueEmpty(specHint) && specs[NormalizeCodeValue(specHint)] != nil
 	if allocRow == nil && !knownSpec {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable: "MFG_FLOW_ISSUE",
+			Action:      "kanban_invalid",
+			MachineNo:   machineNo,
+			Field:       "Machine No",
+			WrongValue:  machineNo,
+			Reason: "ไม่พบเครื่องนี้ในไฟล์ Planning WH และ Product Spec \"" +
+				specHint + "\" บน Kanban ก็ไม่มีใน master_data",
+		})
+
 		c.JSON(200, gin.H{
 			"found":     false,
 			"machineNo": machineNo,
@@ -940,9 +1172,23 @@ func ScanFlowKanban(c *gin.Context) {
 		return
 	}
 
+	// ช่องบน Kanban ที่ขาด / ไม่ครบ — บันทึกไว้ใน audit log (ไม่บล็อก)
+	logKanbanMissingFields(c, machineNo, q, allocRow, specs)
+
 	// ลูกค้า / ประเทศบน Kanban ต้องตรงกับไฟล์ Planning WH ของเครื่องนี้ (ข้ามถ้าไม่มีไฟล์)
 	customer := checkKanbanCustomerRow(machineNo, customerHint, allocRow)
 	if customer.Blocked() {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "MFG_FLOW_ISSUE",
+			Action:       "kanban_invalid",
+			MachineNo:    machineNo,
+			Field:        "ลูกค้า / ประเทศ",
+			WrongValue:   customer.QR,
+			CorrectValue: customer.Plan,
+			Reason:       customer.Detail,
+		})
+
 		c.JSON(200, gin.H{
 			"found":            false,
 			"machineNo":        machineNo,
@@ -959,6 +1205,17 @@ func ScanFlowKanban(c *gin.Context) {
 	planSpec, planSource := flowPlanSpecCodeOf(allocRow, machineNo)
 	specCheck := checkKanbanSpecCodeFrom(machineNo, specHint, planSpec, planSource, specs)
 	if specCheck.Blocked() {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "MFG_FLOW_ISSUE",
+			Action:       "kanban_invalid",
+			MachineNo:    machineNo,
+			Field:        "Product Spec",
+			WrongValue:   specCheck.QR,
+			CorrectValue: specCheck.Plan,
+			Reason:       specCheck.Detail,
+		})
+
 		c.JSON(200, gin.H{
 			"found":        false,
 			"machineNo":    machineNo,
@@ -970,6 +1227,20 @@ func ScanFlowKanban(c *gin.Context) {
 		return
 	}
 
+	// Product Spec อ่านได้ แต่ไม่มีแถวใน master_data — ส่วนใหญ่เกิดจากพิมพ์ผิดบน Kanban
+	// ขั้นนี้ยังไม่บล็อก (ไปบล็อกตอนยืนยัน CW/CV/SM/MP/PH) แต่เก็บไว้ตรวจย้อนหลัง
+	if specCheck.State == SpecCodeCheckNotInMaster {
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "MFG_FLOW_ISSUE",
+			Action:       "kanban_invalid",
+			MachineNo:    machineNo,
+			Field:        "Product Spec",
+			WrongValue:   specCheck.QR,
+			CorrectValue: firstNonEmpty(specCheck.Plan, planSpec),
+			Reason:       specCheck.Detail,
+		})
+	}
+
 	// ...และเทียบ P/N ที่ติดมากับ Kanban กับ P/N ใน master_data ของ Product Spec นั้น
 	partSpecCode := kanbanSpecCodeOverride(specCheck)
 	if partSpecCode == "" {
@@ -977,6 +1248,24 @@ func ScanFlowKanban(c *gin.Context) {
 	}
 	partCheck := checkKanbanPartNos(q, partSpecCode, specs[NormalizeCodeValue(partSpecCode)])
 	if partCheck.Blocked() {
+
+		// ผิดได้หลายช่อง — เก็บทีละช่องว่าอ่านได้อะไร ที่ถูกคืออะไร
+		for _, it := range partCheck.Items {
+			if it.OK {
+				continue
+			}
+			LogInvalidData(c, InvalidData{
+				SourceTable:  "MFG_FLOW_ISSUE",
+				Action:       "kanban_invalid",
+				MachineNo:    machineNo,
+				Component:    it.Component,
+				Field:        it.Label + " " + it.Field + " (Kanban)",
+				WrongValue:   it.QR,
+				CorrectValue: it.MasterData,
+				Reason:       partCheck.Detail,
+			})
+		}
+
 		c.JSON(200, gin.H{
 			"found":        false,
 			"machineNo":    machineNo,
@@ -1066,6 +1355,17 @@ func ConfirmFlowAssembly(c *gin.Context) {
 	// IT Controller / Engine ยังต้องมีแผนจ่ายใน Planning WH
 	// CW / CV / SM / MP / PH ไม่ได้พึ่งไฟล์นั้นแล้ว — ใช้ Product Spec บน Kanban + master_data
 	if allocRow == nil && spec.Source == FlowSourceAllocation {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable: "MFG_FLOW_CONFIRM",
+			Action:      "confirm_invalid",
+			MachineNo:   machineNo,
+			Component:   component,
+			Field:       "Machine No",
+			WrongValue:  machineNo,
+			Reason:      "ไม่พบเครื่อง " + machineNo + " ในไฟล์ Planning WH",
+		})
+
 		c.JSON(200, gin.H{
 			"matched": false,
 			"status":  FlowStatusNoPlan,
@@ -1083,6 +1383,18 @@ func ConfirmFlowAssembly(c *gin.Context) {
 	if qrOK {
 		customer := checkKanbanCustomerRow(machineNo, q.Customer, allocRow)
 		if customer.Blocked() {
+
+			LogInvalidData(c, InvalidData{
+				SourceTable:  "MFG_FLOW_CONFIRM",
+				Action:       "confirm_invalid",
+				MachineNo:    machineNo,
+				Component:    component,
+				Field:        "ลูกค้า / ประเทศ",
+				WrongValue:   customer.QR,
+				CorrectValue: customer.Plan,
+				Reason:       customer.Detail,
+			})
+
 			c.JSON(200, gin.H{
 				"matched":          false,
 				"status":           FlowStatusMismatch,
@@ -1096,6 +1408,17 @@ func ConfirmFlowAssembly(c *gin.Context) {
 	}
 	if spec.Source == FlowSourceCWCVITS {
 		if !qrOK {
+
+			LogInvalidData(c, InvalidData{
+				SourceTable: "MFG_FLOW_CONFIRM",
+				Action:      "confirm_invalid",
+				MachineNo:   machineNo,
+				Component:   component,
+				Field:       "QR Kanban",
+				WrongValue:  strings.TrimSpace(req.QRCode),
+				Reason:      "ต้องสแกน MC# จาก QR บน Kanban ก่อนยืนยัน " + label,
+			})
+
 			c.JSON(200, gin.H{
 				"matched":      false,
 				"status":       FlowStatusMismatch,
@@ -1109,6 +1432,18 @@ func ConfirmFlowAssembly(c *gin.Context) {
 		specCheck := checkKanbanSpecCodeFrom(machineNo, q.SpecCode, planSpec, planSource, specs)
 		if specCheck.BlockedForPart() {
 			msg, detail := partBlockMessage(specCheck, label)
+
+			LogInvalidData(c, InvalidData{
+				SourceTable:  "MFG_FLOW_CONFIRM",
+				Action:       "confirm_invalid",
+				MachineNo:    machineNo,
+				Component:    component,
+				Field:        "Product Spec",
+				WrongValue:   specCheck.QR,
+				CorrectValue: specCheck.Plan,
+				Reason:       detail,
+			})
+
 			c.JSON(200, gin.H{
 				"matched":      false,
 				"status":       FlowStatusMismatch,
@@ -1124,6 +1459,24 @@ func ConfirmFlowAssembly(c *gin.Context) {
 		// P/N ที่ติดมากับ Kanban ต้องตรงกับ master_data ของ Product Spec นั้น
 		partCheck := checkKanbanPartNos(q, kanbanSpecCode, specs[NormalizeCodeValue(kanbanSpecCode)])
 		if partCheck.Blocked() {
+
+			// ค่าบน Kanban ไม่ตรง master_data — เก็บทีละช่องว่าอ่านได้อะไร ที่ถูกคืออะไร
+			for _, it := range partCheck.Items {
+				if it.OK {
+					continue
+				}
+				LogInvalidData(c, InvalidData{
+					SourceTable:  "MFG_FLOW_CONFIRM",
+					Action:       "confirm_invalid",
+					MachineNo:    machineNo,
+					Component:    it.Component,
+					Field:        it.Label + " " + it.Field + " (Kanban)",
+					WrongValue:   it.QR,
+					CorrectValue: it.MasterData,
+					Reason:       partCheck.Detail,
+				})
+			}
+
 			c.JSON(200, gin.H{
 				"matched":      false,
 				"status":       FlowStatusMismatch,
@@ -1149,6 +1502,18 @@ func ConfirmFlowAssembly(c *gin.Context) {
 	}
 
 	if !item.Issued {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "MFG_FLOW_CONFIRM",
+			Action:       "confirm_invalid",
+			MachineNo:    machineNo,
+			Component:    component,
+			Field:        label,
+			WrongValue:   strings.TrimSpace(req.SerialNo),
+			CorrectValue: item.ExpectedPartNo,
+			Reason:       "WH ยังไม่จ่าย " + label + " ของเครื่อง " + machineNo,
+		})
+
 		c.JSON(200, gin.H{
 			"matched":  false,
 			"status":   FlowStatusPending,
@@ -1162,6 +1527,19 @@ func ConfirmFlowAssembly(c *gin.Context) {
 	// CW / CV / SM / MP / PH: P/N ที่ WH จ่าย ต้องตรงกับ P/N ของ Product Spec (จาก Kanban) ใน Master Data
 	if spec.Source == FlowSourceCWCVITS && item.ExpectedPartNo != "" &&
 		!SameCode(item.IssuedPartNo, item.ExpectedPartNo) {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "MFG_FLOW_CONFIRM",
+			Action:       "confirm_invalid",
+			MachineNo:    machineNo,
+			Component:    component,
+			Field:        "P/N",
+			WrongValue:   item.IssuedPartNo,
+			CorrectValue: item.ExpectedPartNo,
+			Reason: label + " P/N ที่ WH จ่าย ไม่ตรงกับ master_data ของ Product Spec " +
+				orDash(machine.PartSpecCode),
+		})
+
 		c.JSON(200, gin.H{
 			"matched":      false,
 			"status":       FlowStatusMismatch,
@@ -1174,6 +1552,18 @@ func ConfirmFlowAssembly(c *gin.Context) {
 	}
 
 	if !req.Confirmed {
+
+		LogInvalidData(c, InvalidData{
+			SourceTable:  "MFG_FLOW_CONFIRM",
+			Action:       "confirm_invalid",
+			MachineNo:    machineNo,
+			Component:    component,
+			Field:        label,
+			WrongValue:   strings.TrimSpace(req.SerialNo),
+			CorrectValue: item.IssuedPartNo,
+			Reason:       "MFG แจ้งว่าของไม่ตรงกับที่ WH จ่ายมา",
+		})
+
 		c.JSON(200, gin.H{
 			"matched":  false,
 			"status":   FlowStatusMismatch,
@@ -1196,6 +1586,18 @@ func ConfirmFlowAssembly(c *gin.Context) {
 	// S/N ที่ MFG สแกน ต้องไม่ใช่ของเครื่องอื่น
 	if spec.MFGNeedsSerial {
 		if owner := flowAssemblySerialOwner(component, serialNo, machineNo); owner != "" {
+
+			LogInvalidData(c, InvalidData{
+				SourceTable:  "MFG_FLOW_CONFIRM",
+				Action:       "confirm_invalid",
+				MachineNo:    machineNo,
+				Component:    component,
+				Field:        "S/N#",
+				WrongValue:   serialNo,
+				CorrectValue: item.IssuedSerialNo,
+				Reason:       label + " S/N# " + serialNo + " ถูกบันทึกกับเครื่อง " + owner + " ไปแล้ว",
+			})
+
 			c.JSON(200, gin.H{
 				"matched":  false,
 				"status":   FlowStatusMismatch,
