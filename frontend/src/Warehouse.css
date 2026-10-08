@@ -1325,7 +1325,7 @@
 .pc-card-cv  { --pc-accent: #6366f1; }
 .pc-card-en  { --pc-accent: #a855f7; }
 .pc-card-cw  { --pc-accent: #ec4899; }
-.pc-card-mc  { --pc-accent: #64748b; }
+.pc-card-mc  { --pc-accent: #06e0d4; }
 
 .pc-barcode-kind {
   position: absolute;
@@ -1348,6 +1348,50 @@
   text-align: center;
   margin-top: 6px;
 }
+.pc-barcode-icon {
+  width: 86px;
+  height: 86px;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--pc-accent, #06e0d4) 14%, #fff);
+  color: var(--color-brand-700, #0f8580);
+}
+.pc-barcode-icon svg {
+  width: 44px;
+  height: 44px;
+  stroke-width: 1.6;
+}
+
+.pc-barcode-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 230px;
+  padding: 13px 28px;
+  border-radius: 999px;
+  background: var(--pc-accent, #06e0d4);
+  border: 1px solid var(--pc-accent, #06e0d4);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--pc-accent, #06e0d4) 32%, transparent);
+  transition: background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+.pc-barcode-card:hover .pc-barcode-cta {
+  background: var(--color-brand-400, #23d3cd);
+  border-color: var(--color-brand-400, #23d3cd);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--pc-accent, #06e0d4) 42%, transparent);
+}
+.pc-barcode-card:active .pc-barcode-cta {
+  background: var(--color-brand-600, #00a39d);
+  border-color: var(--color-brand-600, #00a39d);
+  transform: translateY(1px);
+}
+
 .pc-barcode-box {
   width: 100%;
   background: #fff;
@@ -1367,84 +1411,6 @@
 .pc-barcode-grid--single {
   grid-template-columns: minmax(0, 560px);
   justify-content: center;
-}
-
-/* การ์ด "กดเพื่อสแกน" — ใช้แทนรูปบาร์โค้ดตัวอย่าง
-   ใช้สีน้ำเงินอมเขียวชุดเดียวกับแถบเมนู (--brand-500) ส่วนตัวหนังสือใช้โทนเข้มกว่าให้อ่านชัด */
-.pc-scan-card {
-  --pc-accent: var(--brand-500, #06e0d4);
-  --pc-scan-deep: var(--brand-700, #0f8580);
-  gap: 12px;
-  padding: 30px 22px 26px;
-}
-.pc-scan-icon {
-  position: relative;
-  width: 68px;
-  height: 68px;
-  border-radius: 20px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  color: var(--pc-scan-deep, #0f8580);
-  background: color-mix(in srgb, var(--pc-accent, #06e0d4) 12%, #fff);
-  border: 1px solid color-mix(in srgb, var(--pc-accent, #06e0d4) 32%, #fff);
-  transition: background 0.16s ease, border-color 0.16s ease;
-}
-.pc-scan-icon svg {
-  width: 32px;
-  height: 32px;
-}
-/* เส้นกวาดบาง ๆ วิ่งผ่านไอคอน เฉพาะตอนชี้/โฟกัส — ให้รู้ว่าการ์ดนี้กดได้ */
-.pc-scan-beam {
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  top: 0;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--pc-scan-deep, #0f8580);
-  opacity: 0;
-}
-.pc-barcode-card:hover .pc-scan-icon,
-.pc-barcode-card:focus-visible .pc-scan-icon {
-  background: color-mix(in srgb, var(--pc-accent, #06e0d4) 20%, #fff);
-  border-color: color-mix(in srgb, var(--pc-accent, #06e0d4) 55%, #fff);
-}
-.pc-barcode-card:hover .pc-scan-beam,
-.pc-barcode-card:focus-visible .pc-scan-beam {
-  animation: pc-scan-sweep 1.6s ease-in-out infinite;
-}
-@keyframes pc-scan-sweep {
-  0% { top: 16%; opacity: 0; }
-  20% { opacity: 0.85; }
-  80% { opacity: 0.85; }
-  100% { top: 84%; opacity: 0; }
-}
-.pc-scan-card .pc-barcode-title {
-  margin-top: 0;
-}
-.pc-scan-cta {
-  display: inline-flex;
-  align-items: center;
-  padding: 9px 20px;
-  border-radius: 999px;
-  font-size: 14px;
-  color: #475467;
-  background: #f5f7fa;
-  border: 1px solid var(--pc-line, #e6eaf0);
-  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
-}
-.pc-barcode-card:hover .pc-scan-cta,
-.pc-barcode-card:focus-visible .pc-scan-cta {
-  background: var(--pc-accent, #06e0d4);
-  border-color: var(--pc-accent, #06e0d4);
-  color: var(--brand-ink, #06312f);
-}
-@media (prefers-reduced-motion: reduce) {
-  .pc-barcode-card:hover .pc-scan-beam,
-  .pc-barcode-card:focus-visible .pc-scan-beam {
-    animation: none;
-  }
 }
 
 .wh-history-filters {

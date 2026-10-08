@@ -241,19 +241,19 @@ export const CLEAR_SCOPE = {
 // การล้างเฉพาะไฟล์เดียวจึงอาจไม่ทำให้แถวนั้นหายไป — ระบบจะบอกจำนวนที่เหลือหลังล้างแทน
 export const CLEAR_SCOPE_OPTIONS = [{
   value: CLEAR_SCOPE.IMPORT,
-  label: 'ข้อมูลใบนำเข้า (ไฟล์ Import)',
+  label: 'ลบข้อมูลใบนำเข้าทั้งหมด (ไฟล์ Import)',
   countKeys: ['importItems']
 }, {
   value: CLEAR_SCOPE.EXPORT,
-  label: 'ข้อมูลใบนำออก (ไฟล์ Export)',
+  label: 'ลบข้อมูลใบนำออกทั้งหมด (ไฟล์ Export)',
   countKeys: ['exportItems']
 }, {
   value: CLEAR_SCOPE.RENEWAL,
-  label: 'ข้อมูลต่ออายุ (ไฟล์ Renewal)',
+  label: 'ลบข้อมูลใบต่ออายุทั้งหมด (ไฟล์ Renewal)',
   countKeys: ['renewalHistory', 'renewalLedger']
 }, {
   value: CLEAR_SCOPE.ALL,
-  label: 'ทั้งหมด',
+  label: 'ลบข้อมูลทั้งหมด',
   countKeys: ['importItems', 'exportItems', 'renewalHistory', 'renewalLedger']
 }];
 
