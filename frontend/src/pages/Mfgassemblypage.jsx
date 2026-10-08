@@ -599,7 +599,9 @@ export default function MFGAssemblyPage() {
   function goToPage(p) {
     setPage(Math.min(Math.max(1, p), totalPages));
   }
+  // .wmx / .wmx-mfg = ขอบเขตของ CSS มือถือเฉพาะหน้า MFG (ดู WhMfgMobile.css)
   return <AppShell navItems={MFG_NAV_ITEMS} roleLabel="MFG">
+      <div className="wmx wmx-mfg">
       <div className="wh-heading-row">
         <div>
           <h2 className="wh-title">Matching Assembly</h2>
@@ -926,5 +928,6 @@ export default function MFGAssemblyPage() {
       <input ref={photoFileInputRef} type="file" accept="image/*" style={{
       display: 'none'
     }} onChange={handleUploadPhotoChange} />
+      </div>
     </AppShell>;
 }

@@ -1,0 +1,1106 @@
+/* ===========================================================================
+   WhMfgMobile.css — งานมือถือของหน้า WH, MFG และ QA
+   ---------------------------------------------------------------------------
+   ทุกกฎในไฟล์นี้ถูกครอบด้วย .wmx เสมอ  จึงไม่กระทบหน้าอื่นที่ใช้ class ร่วมกัน
+   (LOG / Import License / Master Data ใช้ .wh-table .wh-modal .prp เหมือนกัน)
+     .wmx-wh   → WHIssuePanel     (หน้า Part Confirmation ของ role WH)
+     .wmx-mfg  → MFGAssemblyPage   (หน้า Matching Assembly ของ role MFG)
+     .wmx-qa   → QAMachineList + QAMachineDetail (หน้าตรวจสอบของ role QA)
+   โหลดไฟล์นี้ท้ายสุดใน main.jsx เพื่อให้ทับ Warehouse.css / theme.css ได้
+   =========================================================================== */
+
+.wmx {
+  --wmx-line: #e6ebf2;
+  --wmx-line-soft: #f1f5f9;
+  --wmx-label: #6b7a90;
+  --wmx-ink: #0f172a;
+  --wmx-surface: #ffffff;
+  --wmx-surface-alt: #f8fafc;
+  --wmx-brand: var(--brand-600, #00a39d);
+  --wmx-brand-deep: var(--brand-800, #146a66);
+  --wmx-radius: 14px;
+  --wmx-tap: 44px;
+  min-width: 0;
+}
+
+/* ===========================================================================
+   1. พื้นฐานสำหรับจอสัมผัส — ปุ่มทุกตัวต้องกดง่าย ช่องกรอกต้องไม่ทำให้ iOS ซูม
+   =========================================================================== */
+@media (pointer: coarse) {
+  .wmx {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .wmx button,
+  .wmx .tsf-action-btn,
+  .wmx .wh-modal-cancel {
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 720px) {
+  /* iOS จะซูมหน้าจออัตโนมัติถ้าช่องกรอกเล็กกว่า 16px */
+  .wmx input,
+  .wmx select,
+  .wmx textarea,
+  .wmx .wh-search {
+    font-size: 16px;
+  }
+
+  .wmx .wh-heading-row {
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .wmx .wh-title {
+    font-size: 21px;
+    font-weight: 300;
+    letter-spacing: -0.2px;
+    line-height: 1.3;
+  }
+
+  .wmx .wh-heading-row .wh-title[style] {
+    font-size: 17px !important;
+  }
+}
+
+/* ===========================================================================
+   2. ช่องเลือก Machine (MC#) — เต็มความกว้างบนมือถือ
+   =========================================================================== */
+@media (max-width: 720px) {
+  .wmx .upload-panel-field {
+    max-width: 100% !important;
+    width: 100%;
+    margin: 2px 0 20px !important;
+  }
+
+  .wmx .upload-panel-label {
+    display: block;
+    margin-bottom: 7px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--wmx-label);
+  }
+}
+
+/* ===========================================================================
+   3. การ์ดตัวกรองช่วงวันที่ — ตัดแถบเลื่อนแนวนอนที่โดนตัดขอบออก
+      เปลี่ยนปุ่ม ทั้งหมด / รายวัน / รายสัปดาห์ / รายเดือน เป็นตาราง 2x2
+   =========================================================================== */
+@media (max-width: 720px) {
+  .wmx .prp-card {
+    padding: 14px;
+    border-radius: var(--wmx-radius);
+    border-color: var(--wmx-line);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    margin-bottom: 12px;
+  }
+
+  .wmx .prp {
+    gap: 14px;
+  }
+
+  .wmx .prp-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--wmx-label);
+    height: auto;
+    line-height: 1.4;
+    white-space: normal;
+  }
+
+  /* ปุ่มช่วงวันที่ทั้งหมดอยู่แถวเดียวกัน — ย่อขนาดตัวอักษรตามความกว้างจอ
+     แทนที่จะปล่อยให้ล้นเป็นแถบเลื่อนแนวนอนหรือตกบรรทัด */
+  .wmx .prp .prp-modes {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 2px;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    padding: 4px;
+    border-radius: 12px;
+    background: #eef2f6;
+  }
+
+  .wmx .prp .prp-mode {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 3px;
+    font-size: clamp(10.5px, 3vw, 13px);
+    font-weight: 600;
+    letter-spacing: -0.1px;
+    border-radius: 9px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wmx .prp .prp-mode.vr-tab-active {
+    background: #fff;
+    color: var(--wmx-brand-deep);
+    box-shadow: 0 1px 2px rgb(16 24 40 / 0.12);
+  }
+
+  .wmx .prp-summary {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .wmx .prp-chip {
+    width: 100%;
+    height: auto;
+    min-height: 42px;
+    padding: 9px 14px;
+    border-radius: 12px;
+    justify-content: space-between;
+  }
+
+  .wmx .prp-clear {
+    width: 100%;
+    min-height: var(--wmx-tap);
+    border-radius: 12px;
+  }
+}
+
+/* ===========================================================================
+   4. แถบเครื่องมือ (จำนวนแถว / ตัวกรองรายการ / ช่องค้นหา) — เรียงลงเป็นชั้น
+   =========================================================================== */
+@media (max-width: 720px) {
+  .wmx .tsf-history-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .wmx .wh-history-filters,
+  .wmx .wh-search-group,
+  .wmx .mfg-search-actions {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .wmx .tsf-history-pagesize {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--wmx-label);
+    font-weight: 500;
+  }
+
+  .wmx .tsf-history-pagesize .wh-pagesize-select {
+    width: 86px;
+    flex: 0 0 86px;
+  }
+
+  .wmx .wh-part-filter,
+  .wmx .wh-filter-field {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .wmx .wh-search {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    min-height: var(--wmx-tap);
+    padding: 11px 14px;
+    border-radius: 12px;
+    border-color: #d7dee8;
+    background: #fff;
+  }
+
+  .wmx .wh-search::placeholder {
+    color: #9aa7b8;
+    font-size: 14px;
+  }
+}
+
+/* ===========================================================================
+   5. ตารางโหมดการ์ด — หัวใจของงานนี้
+      บนมือถือ Warehouse.css เปลี่ยน <tr> เป็นการ์ดอยู่แล้ว
+      ส่วนนี้จัดระเบียบ label/value ให้อ่านง่ายและดูเป็นทางการ
+   =========================================================================== */
+@media (max-width: 720px) {
+  .wmx .wh-table-card {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  /* --- ตัวการ์ด --- */
+  .wmx .wh-table tbody tr {
+    position: relative;
+    background: var(--wmx-surface);
+    border: 1px solid var(--wmx-line);
+    border-radius: var(--wmx-radius);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 24px -20px rgba(15, 23, 42, 0.45);
+    margin-bottom: 9px;
+    overflow: hidden;
+  }
+
+  .wmx .wh-table tbody tr:hover td,
+  .wmx .wh-table tbody tr:focus-within td {
+    background: inherit;
+  }
+
+  /* --- แถบหัวการ์ด (ITEM / ลำดับ) --- */
+  .wmx .wh-table tbody td.wh-cell-head {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 13px;
+    background: linear-gradient(180deg, #f9fbfd 0%, #f4f7fa 100%);
+    border-bottom: 1px solid var(--wmx-line);
+    border-left: 3px solid var(--brand-500, #06e0d4);
+    font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace);
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--wmx-ink);
+    text-align: right;
+    letter-spacing: 0.3px;
+  }
+
+  .wmx .wh-table tbody td.wh-cell-head[data-label]::before {
+    font-family: var(--font-display, 'Inter', system-ui, sans-serif);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--wmx-brand);
+  }
+
+  .wmx .wh-table tbody td.wh-cell-head strong {
+    font-weight: 700;
+  }
+
+  /* --- ช่องข้อมูลแบบ 2 คอลัมน์ ---
+     เดิมข้อมูล 1 ช่อง = 1 บรรทัดเต็มความกว้าง การ์ดหนึ่งใบจึงยาว 8-10 บรรทัด
+     ต้องเลื่อนนานกว่าจะถึงรายการถัดไป  จัดใหม่เป็นตาราง 2 ช่องต่อบรรทัด
+     ชื่อหัวข้อวางบนค่า ความสูงการ์ดลดลงราวครึ่งหนึ่งโดยยังเห็นข้อมูลครบ */
+  .wmx .wh-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wmx .wh-table tbody td.wh-cell-head,
+  .wmx .wh-table tbody td.wh-cell-action,
+  .wmx .wh-table tbody td.wh-empty-cell {
+    grid-column: 1 / -1;
+  }
+
+  .wmx .wh-table tbody td {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0;
+    padding: 5px 13px 6px;
+    border-bottom: 1px solid var(--wmx-line-soft);
+    text-align: left;
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.3;
+    color: #253449;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* เส้นคั่นกลางระหว่างสองช่อง — ช่องซ้ายคือลำดับคู่ (ช่องแรกสุดคือหัวการ์ด) */
+  .wmx .wh-table tbody td:nth-child(even):not(.wh-cell-action) {
+    border-right: 1px solid var(--wmx-line-soft);
+  }
+
+  /* ช่องข้อมูลสุดท้ายที่เหลือเดี่ยว ๆ ให้กินเต็มบรรทัด ไม่ทิ้งช่องว่าง
+     — ตารางที่มีแถบปุ่มปิดท้าย (WH / MFG) ช่องข้อมูลสุดท้ายคือ nth-last-child(2)
+     — ตารางที่ไม่มีแถบปุ่ม (QA) ช่องข้อมูลสุดท้ายคือ last-child */
+  .wmx .wh-table tbody td:nth-last-child(2):nth-child(even),
+  .wmx .wh-table tbody td:last-child:nth-child(even):not(.wh-cell-action) {
+    grid-column: 1 / -1;
+    border-right: none;
+  }
+
+  .wmx .wh-table tbody td[data-label]::before {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    line-height: 1.25;
+    color: var(--wmx-label);
+    text-align: left;
+    white-space: normal;
+  }
+
+  /* ค่าที่เป็นรหัส — monospace อ่านทีละตัวอักษรได้ชัด */
+  .wmx .wh-table tbody td.il-mono {
+    font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace);
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    color: var(--wmx-ink);
+    word-break: break-all;
+  }
+
+  .wmx .wh-table tbody td.il-mono strong {
+    font-weight: 700;
+  }
+
+  /* แถวสุดท้ายก่อนแถบปุ่ม ไม่ต้องมีเส้น */
+  .wmx .wh-table tbody td:last-of-type {
+    border-bottom: none;
+  }
+
+  /* --- badge สถานะ --- */
+  .wmx .wh-table tbody td .il-badge {
+    padding: 4px 11px;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border-radius: 999px;
+    line-height: 1.5;
+  }
+
+  .wmx .wh-table tbody td .il-badge-ok {
+    background: #e8f8ef;
+    color: #067647;
+    box-shadow: inset 0 0 0 1px #abefc6;
+  }
+
+  .wmx .wh-table tbody td .il-badge-bad {
+    background: #fef3f2;
+    color: #b42318;
+    box-shadow: inset 0 0 0 1px #fecdca;
+  }
+
+  .wmx .wh-table tbody td .il-badge-warn {
+    background: #fff6ed;
+    color: #b93815;
+    box-shadow: inset 0 0 0 1px #f9dbaf;
+  }
+
+  .wmx .wh-table tbody td .il-badge-pending {
+    background: #fffaeb;
+    color: #b54708;
+    box-shadow: inset 0 0 0 1px #fedf89;
+  }
+
+  .wmx .wh-table tbody td .il-badge-muted {
+    background: #f4f6f8;
+    color: #68778c;
+    box-shadow: inset 0 0 0 1px #e3e8ef;
+  }
+
+  /* --- รูปถ่าย --- */
+  .wmx .wh-table tbody td .wh-photo-thumb {
+    border-radius: 10px;
+    border-color: var(--wmx-line);
+  }
+
+  .wmx .wh-table tbody td .wh-photo-thumb img {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* --- แถบปุ่มท้ายการ์ด --- */
+  .wmx .wh-table tbody td.wh-cell-action {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    gap: 8px;
+    padding: 7px 13px 9px;
+    background: #fbfcfe;
+    border-top: none;
+    border-bottom: none;
+    text-align: center;
+  }
+
+  .wmx .wh-table tbody td.wh-cell-action::before {
+    content: none;
+  }
+
+  .wmx .wh-table tbody td.wh-cell-action > button,
+  .wmx .wh-table tbody td.wh-cell-action .tsf-action-btn {
+    justify-self: stretch;
+    width: 100%;
+    min-height: 42px;
+    padding: 9px 12px;
+    font-size: 13.5px;
+    font-weight: 600;
+    border-radius: 12px;
+    letter-spacing: 0.1px;
+  }
+
+  /* --- สถานะว่าง / กำลังโหลด --- */
+  .wmx .wh-table tbody tr:has(td.wh-empty-cell) {
+    border-style: dashed;
+    box-shadow: none;
+    background: #fcfdfe;
+  }
+
+  .wmx .wh-table tbody td.wh-empty-cell {
+    display: block;
+    padding: 34px 18px !important;
+    text-align: center;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: #8f9aad;
+    border-bottom: none;
+  }
+}
+
+/* ===========================================================================
+   6. แถบแบ่งหน้า — จัดเป็นแถบเดียวกลางจอ ปุ่มกดง่าย
+   =========================================================================== */
+@media (max-width: 720px) {
+  .wmx .tsf-pagination {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-top: 6px;
+    padding: 13px 14px;
+    background: var(--wmx-surface);
+    border: 1px solid var(--wmx-line);
+    border-radius: var(--wmx-radius);
+  }
+
+  .wmx .tsf-pagination .wh-subtitle {
+    font-size: 12.5px !important;
+    color: var(--wmx-label);
+    text-align: center;
+  }
+
+  .wmx .tsf-pagination-buttons {
+    gap: 8px;
+  }
+
+  .wmx .tsf-pagination-buttons .wh-modal-cancel {
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border-radius: 11px;
+    border-color: #d7dee8;
+    color: #475569;
+  }
+
+  .wmx .tsf-pagination-buttons .wh-modal-cancel:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .wmx .tsf-pagination-current {
+    min-width: 62px;
+    text-align: center;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--wmx-ink);
+  }
+}
+
+/* ===========================================================================
+   7. การ์ดสแกน Kanban (หน้า MFG)
+   =========================================================================== */
+@media (max-width: 720px) {
+  .wmx-mfg .pc-barcode-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    margin: 4px 0 16px;
+  }
+
+  .wmx-mfg .pc-barcode-card {
+    padding: 18px 16px 16px;
+    border-radius: 18px;
+    gap: 10px;
+  }
+
+  .wmx-mfg .pc-barcode-kind {
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+  }
+
+  .wmx-mfg .pc-barcode-title {
+    font-size: 19px;
+  }
+
+  .wmx-mfg .pc-barcode-cta {
+    width: 100%;
+    min-height: 46px;
+    justify-content: center;
+    border-radius: 12px;
+    font-size: 14.5px;
+  }
+}
+
+/* ===========================================================================
+   8. Modal รายละเอียด — เปลี่ยนเป็น bottom sheet บนมือถือ
+   =========================================================================== */
+@media (max-width: 720px) {
+  .wmx .wh-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+    background: rgba(15, 23, 42, 0.5);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .wmx .wh-modal {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -10px 40px rgba(15, 23, 42, 0.28);
+    animation: wmxSheetUp 0.22s ease-out;
+  }
+
+  .wmx .wh-detail-modal {
+    max-width: 100%;
+    max-height: 92dvh;
+    padding: 20px 16px 0;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ขีดจับด้านบนแบบ sheet มาตรฐาน */
+  .wmx .wh-detail-modal::before {
+    content: '';
+    position: sticky;
+    top: 0;
+    display: block;
+    width: 42px;
+    height: 4px;
+    margin: -8px auto 12px;
+    border-radius: 999px;
+    background: #d7dee8;
+  }
+
+  .wmx .wh-detail-close {
+    top: 16px;
+    right: 14px;
+    width: 34px;
+    height: 34px;
+    background: #f1f5f9;
+    color: #475569;
+  }
+
+  .wmx .wh-detail-header {
+    gap: 12px;
+    padding-right: 42px;
+    margin-bottom: 16px;
+  }
+
+  .wmx .wh-detail-header-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+
+  .wmx .wh-detail-header .wh-modal-title {
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .wmx .wh-detail-header-sub {
+    font-size: 12.5px;
+    color: var(--wmx-brand);
+    font-weight: 700;
+  }
+
+  .wmx .wh-detail-section {
+    padding: 12px 0;
+  }
+
+  .wmx .wh-detail-section-title {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: #8f9aad;
+    margin-bottom: 9px;
+  }
+
+  .wmx .wh-detail-divider {
+    margin: 0 -16px;
+    background: var(--wmx-line);
+  }
+
+  /* ข้อมูลทีละแถว label ซ้าย / ค่าขวา ให้เข้าชุดกับการ์ดในตาราง */
+  .wmx .wh-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    border: 1px solid var(--wmx-line);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  .wmx .wh-detail-item {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--wmx-line-soft);
+  }
+
+  .wmx .wh-detail-item:last-child {
+    border-bottom: none;
+  }
+
+  .wmx .wh-detail-label {
+    flex: 0 0 auto;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--wmx-label);
+  }
+
+  .wmx .wh-detail-value {
+    min-width: 0;
+    text-align: right;
+    font-size: 14px;
+    word-break: break-word;
+  }
+
+  .wmx .wh-detail-value.mono {
+    font-size: 13.5px;
+    letter-spacing: 0.3px;
+    word-break: break-all;
+  }
+
+  .wmx .wh-detail-section .wh-photo-thumb {
+    display: block;
+    width: 100%;
+    border-radius: 12px;
+    border-color: var(--wmx-line);
+  }
+
+  .wmx .wh-detail-section .wh-photo-thumb img {
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+  }
+
+  .wmx .wh-detail-meta {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 6px 12px;
+    margin-top: 2px;
+    padding: 12px 0;
+    font-size: 12px;
+  }
+
+  /* ปุ่มปิดติดขอบล่างเสมอ เลื่อนดูข้อมูลยาว ๆ แล้วยังกดปิดได้ทันที */
+  .wmx .wh-modal-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    margin: 0 -16px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: #fff;
+    border-top: 1px solid var(--wmx-line);
+    box-shadow: 0 -6px 16px -12px rgba(15, 23, 42, 0.5);
+  }
+
+  .wmx .wh-modal-actions .wh-modal-cancel,
+  .wmx .wh-modal-actions .wh-modal-confirm {
+    flex: 1 1 0;
+    min-height: 46px;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  /* modal รูปถ่าย + modal แก้ไขรูป ใช้ชุดเดียวกัน */
+  .wmx .mfg-photo-modal,
+  .wmx .wh-photo-modal {
+    padding: 20px 16px 0;
+    max-height: 92dvh;
+    overflow-y: auto;
+  }
+
+  .wmx .mfg-photo-choices {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .wmx .mfg-photo-choice {
+    width: 100%;
+    min-height: 54px;
+    border-radius: 12px;
+  }
+}
+
+@keyframes wmxSheetUp {
+  from {
+    transform: translateY(14px);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wmx .wh-modal {
+    animation: none;
+  }
+}
+
+/* ===========================================================================
+   9. จอแคบมาก (≤ 380px) — บีบระยะลงอีกขั้นโดยยังอ่านออก
+   =========================================================================== */
+@media (max-width: 380px) {
+  .wmx .wh-table tbody td {
+    padding: 6px 11px 7px;
+    font-size: 13px;
+  }
+
+  .wmx .wh-table tbody td[data-label]::before {
+    font-size: 10px;
+  }
+
+  .wmx .wh-table tbody td.il-mono {
+    font-size: 12.5px;
+  }
+
+  .wmx .wh-table tbody td.wh-cell-head,
+  .wmx .wh-table tbody td.wh-cell-action {
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+
+  .wmx .wh-table tbody td.wh-cell-action {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wmx .prp .prp-mode {
+    font-size: 13px;
+    padding: 0 6px;
+  }
+}
+
+/* ===========================================================================
+   10. แนวนอนบนมือถือ — sheet ไม่ควรสูงเต็มจอจนกดปิดไม่เจอ
+   =========================================================================== */
+@media (max-width: 920px) and (orientation: landscape) and (max-height: 520px) {
+  .wmx .wh-detail-modal,
+  .wmx .mfg-photo-modal,
+  .wmx .wh-photo-modal {
+    max-height: 94dvh;
+  }
+
+  .wmx .wh-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wmx .wh-detail-item {
+    border-right: 1px solid var(--wmx-line-soft);
+  }
+}
+
+/* ===========================================================================
+   11. พิมพ์เอกสาร — ให้หน้าจอมือถือพิมพ์ออกมาเป็นตารางปกติ
+   =========================================================================== */
+@media print {
+  .wmx .wh-table tbody tr {
+    box-shadow: none;
+    border: 1px solid #cbd5e1;
+    break-inside: avoid;
+  }
+
+  .wmx .wh-cell-action,
+  .wmx .tsf-history-toolbar,
+  .wmx .tsf-pagination {
+    display: none !important;
+  }
+}
+
+/* ===========================================================================
+   12. หน้า QA — ใช้โครงการ์ด/ชีต/แถบเครื่องมือชุดเดียวกับ WH และ MFG (.wmx)
+       ส่วนนี้คือกฎเฉพาะที่หน้า QA มีเพิ่มมา: แท็บ WH/MFG, ปุ่ม Export,
+       แถบเปลี่ยนหน้าแบบ QA และหน้ารายละเอียดเครื่อง
+   =========================================================================== */
+@media (max-width: 720px) {
+  /* --- แท็บ WH / MFG --- */
+  .wmx-qa .qa-source-tabs {
+    display: flex;
+    width: 100%;
+    gap: 3px;
+    margin: 2px 0 12px;
+    padding: 4px;
+    border-radius: 12px;
+  }
+
+  .wmx-qa .qa-source-tabs .vr-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 40px;
+    padding: 0 8px;
+    font-size: 13.5px;
+  }
+
+  .wmx-qa .qa-source-count {
+    margin-left: 6px;
+  }
+
+  /* --- การ์ดตัวกรองช่วงวันที่ + ปุ่ม Export --- */
+  .wmx-qa .qa-filter-card {
+    padding: 14px;
+    gap: 12px;
+    margin-bottom: 10px;
+    border-color: var(--wmx-line);
+    border-radius: var(--wmx-radius);
+  }
+
+  .wmx-qa .qa-export-actions {
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .wmx-qa .qa-export-actions .qa-download-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 46px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  /* --- บรรทัดสรุปจำนวนรายการ (มี inline style จึงต้อง !important) --- */
+  .wmx-qa .qa-stat-sub {
+    margin: 8px 0 12px !important;
+    padding: 10px 12px;
+    background: #f6f9fb;
+    border: 1px solid var(--wmx-line);
+    border-radius: 12px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--wmx-label);
+  }
+
+  /* --- กล่องตาราง ---
+     บนมือถือตารางแตกเป็นการ์ด กล่องครอบจึงโปร่งใส
+     แถบเครื่องมือกับแถบเปลี่ยนหน้าที่อยู่ข้างในต้องมีพื้นของตัวเอง */
+  .wmx-qa .wh-table-card {
+    overflow-x: visible !important;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
+
+  .wmx-qa .qa-table-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: var(--wmx-surface);
+    border: 1px solid var(--wmx-line);
+    border-radius: var(--wmx-radius);
+  }
+
+  .wmx-qa .qa-table-toolbar-left {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .wmx-qa .qa-table-toolbar-left .wh-pagesize-select {
+    width: 78px;
+    flex: 0 0 78px;
+  }
+
+  .wmx-qa .qa-table-toolbar-right {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .wmx-qa .qa-table-toolbar-right .wh-filter-field {
+    width: 100%;
+  }
+
+  .wmx-qa .qa-table-toolbar-right .wh-filter-field .sf {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .wmx-qa .qa-table-toolbar .wh-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* --- ป้ายชนิดพาร์ท / รูปถ่าย ในการ์ด --- */
+  .wmx-qa .wh-table tbody td .part-tag {
+    margin-left: 0;
+    padding: 3px 9px;
+    font-size: 11px;
+  }
+
+  .wmx-qa .wh-table tbody td button.qa-photo-thumb img {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+  }
+
+  /* --- แถบเปลี่ยนหน้าแบบ QA --- */
+  .wmx-qa .qa-pagination {
+    gap: 10px;
+    padding: 11px 12px;
+    margin-top: 2px;
+    background: var(--wmx-surface);
+    border: 1px solid var(--wmx-line);
+    border-radius: var(--wmx-radius);
+    font-size: 13px;
+  }
+
+  .wmx-qa .qa-pagination button {
+    flex: 1 1 0;
+    min-height: 42px;
+    border-radius: 11px;
+    border-color: #d7dee8;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+
+  .wmx-qa .qa-pagination span {
+    flex: 0 0 auto;
+    min-width: 76px;
+    text-align: center;
+    font-weight: 700;
+    color: var(--wmx-ink);
+  }
+
+  /* --- หน้ารายละเอียดเครื่อง (QA detail) --- */
+  .wmx-qa .qa-detail-topbar {
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .wmx-qa .qa-back-btn {
+    min-height: 42px;
+    padding: 6px 10px 6px 2px;
+  }
+
+  .wmx-qa .qa-detail-topbar .qa-download-btn {
+    min-height: 42px;
+    padding: 9px 14px;
+    border-radius: 11px;
+  }
+
+  .wmx-qa .qa-detail-header {
+    padding: 16px;
+    border-radius: var(--wmx-radius);
+  }
+
+  .wmx-qa .qa-detail-header-title {
+    margin-top: 2px;
+    padding-right: 0;
+    font-size: 20px;
+    word-break: break-all;
+  }
+
+  .wmx-qa .qa-detail-header-status {
+    position: static;
+    display: inline-block;
+    margin-top: 10px;
+  }
+
+  .wmx-qa .qa-detail-section {
+    padding: 14px;
+    margin-bottom: 10px;
+    border: 1px solid var(--wmx-line);
+    border-radius: var(--wmx-radius);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  .wmx-qa .qa-detail-section-title {
+    font-size: 13.5px;
+  }
+
+  .wmx-qa .qa-detail-section-body {
+    padding: 2px 10px;
+    border-radius: 10px;
+  }
+
+  .wmx-qa .qa-detail-field-row {
+    align-items: baseline;
+    gap: 14px;
+    padding: 7px 0;
+    border-bottom: 1px solid #e8eef3;
+    font-size: 13px;
+  }
+
+  .wmx-qa .qa-detail-field-row:last-child {
+    border-bottom: none;
+  }
+
+  .wmx-qa .qa-detail-field-label {
+    flex: 0 0 auto;
+  }
+
+  .wmx-qa .qa-detail-field-value {
+    min-width: 0;
+    word-break: break-word;
+  }
+
+  /* ปุ่มผ่าน / ตีกลับ — ขยายเป็นครึ่งความกว้าง กดด้วยนิ้วโป้งได้ถนัด */
+  .wmx-qa .qa-detail-section-actions {
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .wmx-qa .qa-detail-section-actions .qa-approve-btn,
+  .wmx-qa .qa-detail-section-actions .qa-reject-btn {
+    flex: 1 1 0;
+    width: auto;
+    height: 46px;
+    border-radius: 12px;
+  }
+
+  .wmx-qa .qa-detail-section-actions .qa-approve-btn svg,
+  .wmx-qa .qa-detail-section-actions .qa-reject-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* บนจอใหญ่ปุ่มเป็นไอคอนล้วนเพราะมีพื้นที่ให้กวาดสายตา
+     บนมือถือเติมคำกำกับไว้ด้วย จะได้ไม่ต้องเดาว่าปุ่มไหนคืออะไร */
+  .wmx-qa .qa-detail-section-actions .qa-reject-btn::after,
+  .wmx-qa .qa-detail-section-actions .qa-approve-btn::after {
+    margin-left: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+  }
+
+  .wmx-qa .qa-detail-section-actions .qa-reject-btn::after {
+    content: 'ตีกลับ';
+  }
+
+  .wmx-qa .qa-detail-section-actions .qa-approve-btn::after {
+    content: 'ผ่าน';
+  }
+
+  /* --- รูปถ่ายใน modal --- */
+  .wmx-qa .wh-modal img {
+    max-height: 68dvh;
+    object-fit: contain;
+  }
+}

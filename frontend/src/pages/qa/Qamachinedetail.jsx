@@ -49,7 +49,9 @@ export default function QAMachineDetail() {
   function handleDownload() {
     window.print();
   }
+  // .wmx / .wmx-qa = ขอบเขตของ CSS มือถือเฉพาะหน้า QA (ดู WhMfgMobile.css)
   return <AppShell navItems={navItems} roleLabel="QA">
+      <div className="wmx wmx-qa">
       <div className="qa-detail-topbar">
         <button className="qa-back-btn" onClick={() => navigate('/qa')}>
           <ChevronLeftIcon className="size-4" /> กลับ
@@ -99,5 +101,6 @@ export default function QAMachineDetail() {
               <p className="wh-subtitle">ไม่มีข้อมูลสเปกให้ตรวจสำหรับเครื่องนี้</p>
             </div>}
         </>}
+      </div>
     </AppShell>;
 }

@@ -592,7 +592,9 @@ export default function QAMachineList() {
     if (c.key === 'status') return <span className="il-badge il-badge-ok">MATCHED</span>;
     return dash(r[c.key]);
   }
+  // .wmx / .wmx-qa = ขอบเขตของ CSS มือถือเฉพาะหน้า QA (ดู WhMfgMobile.css)
   return <AppShell navItems={navItems} roleLabel="QA">
+      <div className="wmx wmx-qa">
       <div className="wh-heading-row">
         <div>
           <h2 className="wh-title">QA</h2>
@@ -723,5 +725,6 @@ export default function QAMachineList() {
         }} />
           </div>
         </div>}
+      </div>
     </AppShell>;
 }
