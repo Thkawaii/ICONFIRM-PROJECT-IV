@@ -5,7 +5,7 @@ import SelectField from '../components/Selectfield.jsx';
 import { PreviewResult, ChangePreview } from '../components/FormatTools.jsx';
 import { WH_NAV_ITEMS } from './Importlicensepage.jsx';
 import { uploadImportLicense, previewImportLicense } from '../api/importLicense.js';
-import { getLicenseOverview, getLicenseDetail, deleteLicenseOverviewEntry, uploadLicenseRenewalHistory, previewLicenseRenewalHistory, licenseDaysLabel, licenseDaysHint, LICENSE_STATUS_CLASS, LICENSE_TYPE_LABEL, COUNTRY_ALL, COUNTRY_NONE, COUNTRY_MULTI, COUNTRY_MULTI_LABEL, isMultiCountry, countryKey, countryKeys, countryLabel, countryDisplay, clearLicenseOverview, clearScopeRowCount, setLicenseIssueDate, CLEAR_SCOPE, CLEAR_SCOPE_OPTIONS, TYPE_FILTER_ALL, STATUS_FILTER_ALL, TYPE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS, matchTypeFilter, matchStatusFilter } from '../api/licenseOverview.js';
+import { getLicenseOverview, getLicenseDetail, deleteLicenseOverviewEntry, uploadLicenseRenewalHistory, previewLicenseRenewalHistory, licenseDaysLabel, licenseDaysHint, LICENSE_STATUS_CLASS, LICENSE_TYPE_LABEL, COUNTRY_ALL, COUNTRY_NONE, COUNTRY_MULTI, COUNTRY_MULTI_LABEL, isMultiCountry, countryKey, countryKeys, countryLabel, countryDisplay, clearLicenseOverview, setLicenseIssueDate, CLEAR_SCOPE, CLEAR_SCOPE_OPTIONS, TYPE_FILTER_ALL, STATUS_FILTER_ALL, TYPE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS, matchTypeFilter, matchStatusFilter } from '../api/licenseOverview.js';
 import { formatThaiDate } from '../lib/licenseExpiry.js';
 import { buildStyledXlsxWorkbookBlob, downloadBlob } from '../lib/xlsx.js';
 import { inPeriod, periodRangeLabel, periodFileTag } from '../lib/dateRange.js';
@@ -539,7 +539,6 @@ function LicenseDetailModal({
 function ClearDataModal({
   open,
   busy,
-  sources,
   onClose,
   onClear
 }) {
@@ -557,8 +556,7 @@ function ClearDataModal({
             <TrashIcon className="size-5" />
           </span>
           <div>
-            <h3 className="wh-modal-title">ล้างข้อมูลใบอนุญาต</h3>
-            <span className="wh-detail-header-sub">เลือกว่าจะล้างข้อมูลส่วนไหน</span>
+            <h3 className="wh-modal-title">ลบข้อมูลใบอนุญาต</h3>
           </div>
         </div>
 
@@ -568,9 +566,6 @@ function ClearDataModal({
               <span className="lo-clear-option-text">
                 <span className="lo-clear-option-label">
                   {o.label}
-                  <span className="lo-clear-option-count">
-                    {clearScopeRowCount(o, sources) ?? 0} แถว
-                  </span>
                 </span>
               </span>
             </button>)}
@@ -582,7 +577,7 @@ function ClearDataModal({
           </button>
           <button className="tsf-action-btn lo-clear-confirm" onClick={() => onClear(active)} disabled={busy}>
             <TrashIcon className="size-4" />
-            {busy ? 'กำลังลบ...' : 'ล้างข้อมูล'}
+            {busy ? 'กำลังลบ...' : 'ลบข้อมูล'}
           </button>
         </div>
       </div>
@@ -939,8 +934,8 @@ export default function LicenseOverviewPage() {
   async function handleClear(option) {
     if (!option || clearing) return;
     const ok = await confirmDelete({
-      title: 'ล้าง' + option.label + '?',
-      confirmText: 'ล้างข้อมูล'
+      title: option.label + '?',
+      confirmText: 'ลบข้อมูล'
     });
     if (!ok) return;
     setClearing(true);
@@ -952,7 +947,7 @@ export default function LicenseOverviewPage() {
       // ลบไปแล้วแต่ตารางยังมีแถวเหลือ = ใบเหล่านั้นมาจากไฟล์อื่นที่ยังไม่ได้ล้าง
       // ต้องบอกตรง ๆ ไม่งั้นจะดูเหมือนปุ่มลบไม่ทำงาน
       if (res?.remaining > 0 && option.value !== CLEAR_SCOPE.ALL) {
-        toastError(`ยังเหลือ ${res.remaining} ใบในตาราง เพราะมาจากไฟล์อื่นที่ยังไม่ได้ล้าง — เลือก "ทั้งหมด" ถ้าต้องการให้ตารางว่างเปล่า`);
+        toastError(`ยังเหลือ ${res.remaining} ใบในตาราง เพราะมาจากไฟล์อื่นที่ยังไม่ได้ลบ — เลือก "ลบข้อมูลทั้งหมด" ถ้าต้องการให้ตารางว่างเปล่า`);
       }
     } catch (err) {
       toastError(err.message || 'ล้างข้อมูลไม่สำเร็จ');
@@ -1218,6 +1213,6 @@ export default function LicenseOverviewPage() {
 
       <LicenseDetailModal target={detailTarget} onClose={() => setDetailTarget(null)} onChanged={load} />
 
-      <ClearDataModal open={clearOpen} busy={clearing} sources={sources} onClose={() => !clearing && setClearOpen(false)} onClear={handleClear} />
+      <ClearDataModal open={clearOpen} busy={clearing} onClose={() => !clearing && setClearOpen(false)} onClear={handleClear} />
     </AppShell>;
 }
