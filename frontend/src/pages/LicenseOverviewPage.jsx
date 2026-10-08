@@ -283,10 +283,6 @@ function LicenseDetailModal({
   }
   return <div className="wh-modal-overlay" onClick={onClose}>
       <div className="wh-modal wh-detail-modal lo-detail-modal" onClick={e => e.stopPropagation()}>
-        <button type="button" className="wh-detail-close" onClick={onClose} aria-label="ปิด">
-          <XMarkIcon className="size-4" />
-        </button>
-
         <div className="wh-detail-header">
           <span className="wh-detail-header-icon">
             <DocumentTextIcon className="size-5" />
@@ -297,12 +293,16 @@ function LicenseDetailModal({
               {LICENSE_TYPE_LABEL[detail.licenseType] || detail.licenseType}
             </span>
           </div>
+          <button type="button" className="wh-detail-close" onClick={onClose} aria-label="ปิด">
+            <XMarkIcon className="size-4" />
+          </button>
         </div>
 
         {/* แบ่งเป็นสามกลุ่มตามสิ่งที่คนมาหา: ตัวใบ · อายุ · จำนวน
             ของเดิมเรียงต่อกันรวดเดียว เลขใบปัจจุบันกับเลขใบต้นฉบับจึงอยู่คนละมุมจอ
             ทั้งที่เป็นข้อมูลคู่กันที่คนเอามาเทียบกันบ่อยที่สุด */}
-        <div className="wh-detail-section">
+        <div className="lo-detail-cols">
+        <div className="wh-detail-section lo-sec">
           <div className="wh-detail-section-title">ใบอนุญาต</div>
           <div className="wh-detail-grid lo-detail-grid">
             <div className="wh-detail-item">
@@ -335,9 +335,7 @@ function LicenseDetailModal({
           </div>
         </div>
 
-        <div className="wh-detail-divider" />
-
-        <div className="wh-detail-section">
+        <div className="wh-detail-section lo-sec">
           <div className="wh-detail-section-title">อายุและการต่ออายุ</div>
           <div className="wh-detail-grid lo-detail-grid">
             <div className="wh-detail-item">
@@ -376,9 +374,7 @@ function LicenseDetailModal({
           </div>
         </div>
 
-        <div className="wh-detail-divider" />
-
-        <div className="wh-detail-section">
+        <div className="wh-detail-section lo-sec">
           <div className="wh-detail-section-title">จำนวนเครื่อง</div>
           <div className="wh-detail-grid lo-detail-grid">
             <div className="wh-detail-item">
@@ -413,29 +409,32 @@ function LicenseDetailModal({
                 </span>
               </div>
 
-              {/* ใบนำเข้าใบเดียวแบ่งโควต้าออกหลายประเทศพร้อมกันได้
-                  ยอดรวมอย่างเดียวไม่พอ ต้องเห็นว่าแต่ละประเทศได้เท่าไหร่ */}
-              {detail.branches?.length > 1 && <div className="wh-detail-item lo-branch-item">
-                  <span className="wh-detail-label">แบ่งตามประเทศ</span>
-                  <div className="lo-branch-list">
-                    {detail.branches.map((b, i) => <div className="lo-branch-row" key={b.exportLicenseNo || i}>
-                        <span className="lo-branch-country">{countryDisplay(b.country) || DASH}</span>
-                        <span className="lo-branch-no mono">{b.exportLicenseNo || DASH}</span>
-                        <span className="lo-branch-num">
-                          <strong>{b.remain ?? 0}</strong>
-                          <span className="lo-branch-unit">/ {b.stock ?? 0} เครื่อง</span>
-                        </span>
-                        {/* ช่อง REMAIN บอกว่าเหลือของบนใบนี้กี่เครื่อง
-                            0 = ตัดออกหมดแล้ว · มากกว่า 0 = ของที่ขายไม่ออก ค้างอยู่บนใบ */}
-                        <span className="lo-done-count">
-                          {(b.remain ?? 0) <= 0 ? 'นำออกหมดแล้ว' : 'รายการคงค้าง'}
-                        </span>
-                      </div>)}
-                  </div>
-                </div>}
             </>}
           </div>
         </div>
+        </div>
+
+        {/* ใบนำเข้าใบเดียวแบ่งโควต้าออกหลายประเทศพร้อมกันได้
+            ยอดรวมอย่างเดียวไม่พอ ต้องเห็นว่าแต่ละประเทศได้เท่าไหร่
+            รายการนี้มีสี่ช่องต่อบรรทัด กว้างเกินคอลัมน์เดียว จึงแยกมาเต็มความกว้าง */}
+        {detail.hasLedger && detail.branches?.length > 1 && <div className="wh-detail-section lo-branch-section">
+            <div className="wh-detail-section-title">แบ่งตามประเทศ</div>
+            <div className="lo-branch-list">
+              {detail.branches.map((b, i) => <div className="lo-branch-row" key={b.exportLicenseNo || i}>
+                  <span className="lo-branch-country">{countryDisplay(b.country) || DASH}</span>
+                  <span className="lo-branch-no mono">{b.exportLicenseNo || DASH}</span>
+                  <span className="lo-branch-num">
+                    <strong>{b.remain ?? 0}</strong>
+                    <span className="lo-branch-unit">/ {b.stock ?? 0} เครื่อง</span>
+                  </span>
+                  {/* ช่อง REMAIN บอกว่าเหลือของบนใบนี้กี่เครื่อง
+                      0 = ตัดออกหมดแล้ว · มากกว่า 0 = ของที่ขายไม่ออก ค้างอยู่บนใบ */}
+                  <span className="lo-done-count">
+                    {(b.remain ?? 0) <= 0 ? 'นำออกหมดแล้ว' : 'รายการคงค้าง'}
+                  </span>
+                </div>)}
+            </div>
+          </div>}
 
         {/* ไม่มีวันหมดอายุ = ไฟล์ไม่มีวันที่ออกใบ — ให้กรอกเองได้ ไม่งั้นแจ้งเตือนไม่ทำงาน */}
         {!detail.expiryDate && detail.items > 0 && <div className="lo-issue-date">
@@ -459,7 +458,7 @@ function LicenseDetailModal({
 
         <div className="wh-detail-divider" />
 
-        <div className="wh-detail-section">
+        <div className="wh-detail-section lo-chain-section">
           <span className="wh-detail-section-title">
             <ArrowPathIcon className="size-4" /> ประวัติการต่ออายุ
           </span>
@@ -474,7 +473,7 @@ function LicenseDetailModal({
               {ledgerRows === 0 ? 'ยังไม่มีข้อมูลชีตต่ออายุในระบบเลย (ตารางทะเบียน 0 แถว) — อัปโหลดไฟล์อีกครั้ง แล้ว สต็อกใบอนุญาตส่งออก และคงเหลือจะขึ้นตัวเลข' : `ตารางทะเบียนมี ${ledgerRows} แถว แต่ไม่พบเลขใบชุดนี้อยู่ในนั้น — ตรวจว่าไฟล์ที่อัปล่าสุดมีใบเหล่านี้อยู่ในชีตต่ออายุหรือไม่`}
             </p>}
 
-          {!loading && !error && <div className="wh-table-card">
+          {!loading && !error && <div className="wh-table-card lo-chain-scroll">
               <table className="wh-table">
                 <thead>
                   <tr>
@@ -875,11 +874,6 @@ export default function LicenseOverviewPage() {
         header: 'Last Renewal',
         type: 'center',
         width: 16
-      }, {
-        key: 'groupNo',
-        header: 'No.',
-        type: 'center',
-        width: 18
       }];
 
       const sheets = names.map(key => {
@@ -910,8 +904,7 @@ export default function LicenseOverviewPage() {
             stock: r.stock ?? 0,
             remain: r.remain ?? 0,
             renewalCount: r.renewalCount ?? 0,
-            lastRenewal: r.lastRenewalDate ? formatThaiDate(r.lastRenewalDate) : DASH,
-            groupNo: groupNoLabel(r.groupNo) || DASH
+            lastRenewal: r.lastRenewalDate ? formatThaiDate(r.lastRenewalDate) : DASH
           }))
         };
       });

@@ -3439,3 +3439,177 @@
     order: 3;
   }
 }
+
+/* ===========================================================================
+   กล่องรายละเอียดใบอนุญาต (ใบนำเข้า / ใบนำออก) — จัดใหม่ให้อ่านจบในจอเดียว
+   ---------------------------------------------------------------------------
+   ของเดิมสามกลุ่ม (ใบอนุญาต · อายุและการต่ออายุ · จำนวนเครื่อง) ซ้อนลงมาเป็น
+   แนวตั้ง กล่องกว้าง 720px แต่กริดใช้แค่สองคอลัมน์ พื้นที่แนวนอนจึงเหลือทิ้ง
+   ส่วนความสูงยาวเกินจอ ตารางประวัติที่อยู่ล่างสุดก็ยิ่งดันให้ยาวตามจำนวนแถว
+   ผลคือทุกครั้งที่เปิดดูต้องเลื่อนหาเอง
+
+   ที่แก้: วางสามกลุ่มเรียงข้างกัน · ตรึงหัวกล่องกับปุ่มปิดไว้ ·
+   ให้ตารางประวัติมีกล่องเลื่อนของตัวเองพร้อมหัวตารางตรึง
+   =========================================================================== */
+.lo-detail-modal.wh-detail-modal {
+  max-width: 920px;
+  max-height: 90dvh;
+  padding: 0 22px;
+}
+
+/* --- หัวกล่อง: ตรึงไว้ ปุ่มปิดย้ายมาอยู่ในแถวเดียวกัน --- */
+.lo-detail-modal .wh-detail-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  gap: 12px;
+  margin: 0 -22px;
+  padding: 15px 22px 13px;
+  background: #fff;
+  border-bottom: 1px solid var(--color-line, #e3e8ef);
+  padding-right: 22px;
+}
+
+.lo-detail-modal .wh-detail-close {
+  position: static;
+  flex: none;
+  margin-left: auto;
+}
+
+/* --- สามกลุ่มข้อมูลเรียงข้างกัน --- */
+.lo-detail-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+}
+
+.lo-detail-cols > .lo-sec {
+  min-width: 0;
+  padding: 15px 20px;
+}
+
+.lo-detail-cols > .lo-sec:first-child {
+  padding-left: 0;
+}
+
+.lo-detail-cols > .lo-sec:last-child {
+  padding-right: 0;
+}
+
+.lo-detail-cols > .lo-sec + .lo-sec {
+  border-left: 1px solid var(--color-line, #e3e8ef);
+}
+
+/* ในคอลัมน์เดียวไม่ต้องแบ่งสองช่องอีก เรียงลงมาตรง ๆ อ่านง่ายกว่า */
+.lo-detail-modal .lo-detail-cols .lo-detail-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 11px;
+}
+
+/* ส่วนที่กว้างเกินหนึ่งคอลัมน์ ให้กินเต็มความกว้างใต้สามคอลัมน์ */
+.lo-detail-modal > .wh-detail-section,
+.lo-detail-modal > .lo-issue-date {
+  border-top: 1px solid var(--color-line, #e3e8ef);
+}
+
+.lo-detail-modal .lo-branch-section {
+  padding: 14px 0 12px;
+}
+
+/* --- ตารางประวัติการต่ออายุ ---
+   เคยให้ตารางเลื่อนในกรอบของตัวเอง ผลคือมีแถบเลื่อนแนวตั้งสองชั้นซ้อนกัน
+   (ของกล่องกับของตาราง) ต้องเดาทุกครั้งว่ากำลังเลื่อนอันไหนอยู่
+   เอาออก เหลือแถบเลื่อนของกล่องอันเดียว ตารางยาวเท่าไหร่ก็แสดงเต็มไปเลย */
+.lo-detail-modal .lo-chain-scroll {
+  max-height: none;
+  overflow-y: visible;
+}
+
+/* หัวตารางสองคอลัมน์ท้ายยาวกว่าตัวเลขข้างใต้มาก ปล่อยให้ขึ้นสองบรรทัดได้
+   ตารางจะแคบลงจนพอดีกล่อง ไม่ต้องมีแถบเลื่อนแนวนอนอีกแถบ */
+.lo-detail-modal .wh-table thead th.lo-th-num {
+  white-space: normal;
+  line-height: 1.35;
+}
+
+/* ของเดิมตั้ง width: max-content ไว้ ตารางจึงกว้างตามหัวคอลัมน์ที่ยาวที่สุดเสมอ
+   และหัวตารางไม่ยอมขึ้นบรรทัดใหม่ให้ ปรับเป็น 100% — ถ้าข้อมูลใส่ได้ก็พอดีกล่อง
+   ถ้าใส่ไม่ได้จริง ๆ ตารางจะขยายเองแล้วค่อยมีแถบเลื่อนแนวนอนตามเดิม */
+.lo-detail-modal .wh-table {
+  width: 100%;
+}
+
+/* --- ปุ่มปิดท้ายกล่อง: ตรึงไว้ จะได้กดปิดได้โดยไม่ต้องเลื่อนกลับ --- */
+.lo-detail-modal .wh-modal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin: 0 -22px;
+  padding: 12px 22px;
+  background: #fff;
+  border-top: 1px solid var(--color-line, #e3e8ef);
+}
+
+.lo-detail-modal .wh-detail-divider {
+  margin: 0 -22px;
+}
+
+/* --- จอแคบลง: สามคอลัมน์ไม่พอ ค่อย ๆ ลดลงมา --- */
+@media (max-width: 880px) {
+  .lo-detail-cols {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lo-detail-cols > .lo-sec:nth-child(2n + 1) {
+    padding-left: 0;
+  }
+
+  .lo-detail-cols > .lo-sec:nth-child(2n) {
+    padding-right: 0;
+  }
+
+  .lo-detail-cols > .lo-sec:nth-child(2n + 1) {
+    border-left: none;
+  }
+
+  .lo-detail-cols > .lo-sec:nth-child(n + 3) {
+    border-top: 1px solid var(--color-line, #e3e8ef);
+  }
+}
+
+@media (max-width: 620px) {
+  .lo-detail-modal.wh-detail-modal {
+    padding: 0 16px;
+  }
+
+  .lo-detail-modal .wh-detail-header,
+  .lo-detail-modal .wh-modal-actions,
+  .lo-detail-modal .wh-detail-divider {
+    margin-left: -16px;
+    margin-right: -16px;
+  }
+
+  .lo-detail-modal .wh-detail-header,
+  .lo-detail-modal .wh-modal-actions {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .lo-detail-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lo-detail-cols > .lo-sec {
+    padding: 13px 0;
+    border-left: none;
+  }
+
+  .lo-detail-cols > .lo-sec + .lo-sec {
+    border-left: none;
+    border-top: 1px solid var(--color-line, #e3e8ef);
+  }
+
+  .lo-detail-modal .lo-chain-scroll {
+    max-height: none;
+  }
+}
