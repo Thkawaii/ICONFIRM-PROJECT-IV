@@ -223,7 +223,8 @@ export default function WHIssuePanel() {
   function goToPage(p) {
     setPage(Math.min(Math.max(1, p), totalPages));
   }
-  return <>
+  // .wmx / .wmx-wh = ขอบเขตของ CSS มือถือเฉพาะหน้า WH (ดู WhMfgMobile.css)
+  return <div className="wmx wmx-wh">
       {loadError && <p className="form-error" role="alert">
           {loadError}
         </p>}
@@ -447,5 +448,5 @@ export default function WHIssuePanel() {
             </div>
           </div>
         </div>}
-    </>;
+    </div>;
 }

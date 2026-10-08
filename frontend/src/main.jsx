@@ -26,6 +26,8 @@ import './Dropzone.css';
 import './components/Parttag.css';
 import './Selectfield.css';
 import './theme.css';
+// ท้ายสุดเสมอ — ปรับ CSS มือถือเฉพาะหน้า WH / MFG (scope ด้วย .wmx)
+import './WhMfgMobile.css';
 const resolveHomeRoute = homeRouteForRole;
 const ROUTE_CONFIG = {
   '/login': {
