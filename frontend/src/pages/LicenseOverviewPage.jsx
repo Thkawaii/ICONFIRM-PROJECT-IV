@@ -5,7 +5,7 @@ import SelectField from '../components/Selectfield.jsx';
 import { PreviewResult, ChangePreview } from '../components/FormatTools.jsx';
 import { WH_NAV_ITEMS } from './Importlicensepage.jsx';
 import { uploadImportLicense, previewImportLicense } from '../api/importLicense.js';
-import { getLicenseOverview, getLicenseDetail, deleteLicenseOverviewEntry, uploadLicenseRenewalHistory, previewLicenseRenewalHistory, licenseDaysLabel, licenseDaysHint, LICENSE_STATUS_CLASS, LICENSE_TYPE_LABEL, COUNTRY_ALL, COUNTRY_NONE, COUNTRY_MULTI, COUNTRY_MULTI_LABEL, isMultiCountry, countryKey, countryKeys, countryLabel, countryDisplay, clearLicenseOverview, setLicenseIssueDate, CLEAR_SCOPE, CLEAR_SCOPE_OPTIONS, TYPE_FILTER_ALL, STATUS_FILTER_ALL, TYPE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS, matchTypeFilter, matchStatusFilter } from '../api/licenseOverview.js';
+import { getLicenseOverview, getLicenseDetail, deleteLicenseOverviewEntry, uploadLicenseRenewalHistory, previewLicenseRenewalHistory, licenseDaysLabel, licenseDaysHint, LICENSE_STATUS_CLASS, LICENSE_TYPE_LABEL, COUNTRY_ALL, COUNTRY_NONE, COUNTRY_MULTI, COUNTRY_MULTI_LABEL, isMultiCountry, countryKey, countryKeys, countryLabel, countryDisplay, clearLicenseOverview, setLicenseIssueDate, CLEAR_SCOPE, CLEAR_SCOPE_OPTIONS, TYPE_FILTER_ALL, STATUS_FILTER_ALL, TYPE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS, matchTypeFilter, matchStatusFilter, matchCountryFilter } from '../api/licenseOverview.js';
 import { formatThaiDate } from '../lib/licenseExpiry.js';
 import { buildStyledXlsxWorkbookBlob, downloadBlob } from '../lib/xlsx.js';
 import { inPeriod, periodRangeLabel, periodFileTag } from '../lib/dateRange.js';
@@ -631,40 +631,42 @@ export default function LicenseOverviewPage() {
   // กรองฝั่ง client เพื่อให้สลับแท็บได้ทันทีโดยไม่ต้องยิง API ใหม่
   const filtered = useMemo(() => {
     // ตัวกรองทั้งสามชั้นทำงานร่วมกัน: ประเภทใบ + สถานะ + ประเทศ
-    let list = rows.filter(r => matchTypeFilter(r, typeFilter) && matchStatusFilter(r, statusFilter));
-    if (country === COUNTRY_MULTI) {
-      // ใบที่ครอบหลายประเทศในใบเดียว ยังไม่ได้แตกสายตามประเทศ
-      list = list.filter(r => isMultiCountry(r.country));
-    } else if (country !== COUNTRY_ALL) {
-      list = list.filter(r => countryKeys(r.country).includes(country));
-    }
+    let list = rows.filter(r => matchTypeFilter(r, typeFilter) && matchStatusFilter(r, statusFilter) && matchCountryFilter(r, country));
     const term = search.trim().toLowerCase();
     if (term) {
       list = list.filter(r => [r.currentLicenseNo, r.originalLicenseNo, r.country, r.model, ...(r.previousLicenseNos || [])].some(v => String(v || '').toLowerCase().includes(term)));
     }
     return list;
   }, [rows, typeFilter, statusFilter, search, country]);
-  // ตัวเลือกประเทศ สร้างจากข้อมูลที่มีจริงในระบบ พร้อมจำนวนใบของแต่ละประเทศ
+  // ตัวเลือกประเทศ สร้างจากข้อมูลที่ผ่านตัวกรองประเภทและสถานะมาแล้ว
+  // ไม่ใช่ยอดรวมทั้งระบบ — เลือก "ใบนำเข้า (2)" ไว้ แต่ประเทศยังขึ้น (5)
+  // ผู้ใช้จะอ่านว่าตัวกรองไม่ทำงาน ทั้งที่ตารางกรองถูกแล้ว
   // "ไม่ระบุประเทศ" ดันไว้ท้ายสุดเสมอ เพราะไม่ใช่ชื่อประเทศ
   const countryOptions = useMemo(() => {
+    const base = rows.filter(r => matchTypeFilter(r, typeFilter) && matchStatusFilter(r, statusFilter));
     const tally = new Map();
     let multi = 0;
-    for (const r of rows) {
+    for (const r of base) {
       for (const key of countryKeys(r.country)) {
         tally.set(key, (tally.get(key) || 0) + 1);
       }
       if (isMultiCountry(r.country)) multi++;
     }
+    // ประเทศที่เลือกค้างไว้ต้องอยู่ในรายการเสมอ แม้ตัวกรองอื่นจะทำให้เหลือ 0 ใบ
+    // ไม่งั้นตัวเลือกจะหายไปเองแล้วเด้งกลับเป็นทุกประเทศโดยผู้ใช้ไม่ได้สั่ง
+    if (country !== COUNTRY_ALL && country !== COUNTRY_MULTI && !tally.has(country)) {
+      tally.set(country, 0);
+    }
     const named = Array.from(tally.keys()).filter(k => k !== COUNTRY_NONE).sort((a, b) => a.localeCompare(b));
     const list = [{
       value: COUNTRY_ALL,
-      label: `ทุกประเทศ (${rows.length})`
+      label: `ทุกประเทศ (${base.length})`
     }, ...named.map(k => ({
       value: k,
       label: `${countryLabel(k)} (${tally.get(k)})`
     }))];
     // วางต่อจากรายประเทศ ก่อน "ไม่ระบุประเทศ" ที่ต้องอยู่ท้ายสุดเสมอ
-    if (multi > 0) {
+    if (multi > 0 || country === COUNTRY_MULTI) {
       list.push({
         value: COUNTRY_MULTI,
         label: `${COUNTRY_MULTI_LABEL} (${multi})`
@@ -677,14 +679,26 @@ export default function LicenseOverviewPage() {
       });
     }
     return list;
+  }, [rows, typeFilter, statusFilter, country]);
+
+  // ประเทศที่มีอยู่จริงในระบบ (ไม่สนตัวกรองอื่น) ใช้เช็กว่าค่าที่เลือกไว้ยังใช้ได้ไหม
+  const knownCountries = useMemo(() => {
+    const set = new Set([COUNTRY_ALL]);
+    for (const r of rows) {
+      for (const key of countryKeys(r.country)) set.add(key);
+      if (isMultiCountry(r.country)) set.add(COUNTRY_MULTI);
+    }
+    return set;
   }, [rows]);
 
   // ประเทศที่เลือกไว้อาจหายไปหลังลบข้อมูล — ถอยกลับเป็นทุกประเทศ ไม่งั้นตารางจะว่างโดยไม่รู้สาเหตุ
+  // เช็กกับข้อมูลทั้งหมด ไม่ใช่กับตัวเลือกที่กรองแล้ว เพราะแค่สลับประเภทใบ
+  // ไม่ควรล้างประเทศที่ผู้ใช้ตั้งใจเลือกทิ้ง
   useEffect(() => {
-    if (country !== COUNTRY_ALL && !countryOptions.some(o => o.value === country)) {
+    if (!knownCountries.has(country)) {
       setCountry(COUNTRY_ALL);
     }
-  }, [countryOptions, country]);
+  }, [knownCountries, country]);
 
   // จำนวนในแต่ละตัวเลือก คิดจากตัวกรองอีกชั้นที่เลือกไว้แล้ว
   //
@@ -693,13 +707,13 @@ export default function LicenseOverviewPage() {
   // ตัวเลขจึงตรงกับสิ่งที่จะได้เห็นจริงหลังกด ไม่ใช่ยอดรวมทั้งระบบ
   const typeOptions = useMemo(() => TYPE_FILTER_OPTIONS.map(o => ({
     value: o.value,
-    label: `${o.label} (${rows.filter(r => matchTypeFilter(r, o.value) && matchStatusFilter(r, statusFilter)).length})`
-  })), [rows, statusFilter]);
+    label: `${o.label} (${rows.filter(r => matchTypeFilter(r, o.value) && matchStatusFilter(r, statusFilter) && matchCountryFilter(r, country)).length})`
+  })), [rows, statusFilter, country]);
 
   const statusOptions = useMemo(() => STATUS_FILTER_OPTIONS.map(o => ({
     value: o.value,
-    label: `${o.label} (${rows.filter(r => matchTypeFilter(r, typeFilter) && matchStatusFilter(r, o.value)).length})`
-  })), [rows, typeFilter]);
+    label: `${o.label} (${rows.filter(r => matchTypeFilter(r, typeFilter) && matchStatusFilter(r, o.value) && matchCountryFilter(r, country)).length})`
+  })), [rows, typeFilter, country]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
