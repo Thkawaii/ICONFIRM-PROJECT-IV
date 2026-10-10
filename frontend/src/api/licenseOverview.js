@@ -49,6 +49,15 @@ export function countryKeys(value) {
   return parts.length ? Array.from(new Set(parts)) : [COUNTRY_NONE];
 }
 
+// matchCountryFilter: แถวนี้ผ่านตัวกรองประเทศที่เลือกไว้หรือไม่
+// แยกออกมาเป็นฟังก์ชันเดียว เพราะทั้งตอนกรองตารางและตอนนับจำนวนในตัวเลือก
+// ต้องใช้เกณฑ์เดียวกัน ไม่งั้นตัวเลขในวงเล็บกับแถวที่เห็นจริงจะไม่ตรงกัน
+export function matchCountryFilter(row, country) {
+  if (!country || country === COUNTRY_ALL) return true;
+  if (country === COUNTRY_MULTI) return isMultiCountry(row?.country);
+  return countryKeys(row?.country).includes(country);
+}
+
 // ป้ายที่แสดงให้ผู้ใช้เห็น — จัดเว้นวรรคหน้าลูกน้ำให้เรียบร้อย
 export function countryDisplay(value) {
   const keys = countryKeys(value);
