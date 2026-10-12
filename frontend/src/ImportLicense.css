@@ -3197,6 +3197,45 @@
   color: #15803d;
 }
 
+/* ป้ายเตือนบนหน้า License Overview
+   ---------------------------------------------------------------------------
+   สองสถานะนี้คนละเรื่องกัน จึงต้องคนละสี ไม่งั้นคนทำงานแยกไม่ออก
+
+   lo-flag-untouched  = REMAIN ยังเท่ากับ STOCK ไม่เคยตัดของออกเลย (งานยังไม่เริ่ม)
+   lo-flag-overdue    = ใบนำออกหมดอายุครบทุกสาย แต่ใบนำเข้ายังใช้ได้ (ต้องรีบยื่นใบใหม่)
+
+   ใช้ display:block เหมือน .lo-done-count เพราะอยู่ใต้ตัวเลขในคอลัมน์เดียวกัน */
+.lo-flag-untouched,
+.lo-flag-overdue {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
+  vertical-align: middle;
+}
+
+.lo-flag-untouched {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.lo-flag-overdue {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* ในคอลัมน์จำนวนเครื่องและสถานะ ป้ายขึ้นบรรทัดใหม่เสมอ
+   เพราะตัวเลขกับป้ายยาวรวมกันแล้วเกินความกว้างคอลัมน์ */
+.lo-cell-num .lo-flag-untouched,
+.lo-cell-num .lo-flag-overdue,
+td[data-label='สถานะ / จำนวนวัน'] .lo-flag-overdue {
+  display: block;
+  width: fit-content;
+}
+
 .lo-upload-skip {
   color: var(--text-muted, #5b6472);
   font-weight: 400;
