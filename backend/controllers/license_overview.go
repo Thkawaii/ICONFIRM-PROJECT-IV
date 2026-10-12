@@ -501,6 +501,10 @@ type baseLicense struct {
 	Stock           int // STOCK EXPORT LICENSE — จำนวนที่อยู่บนใบนำออก
 	Remain          int // REMAIN — ยอดคงเหลือ
 
+	// HasRemain = มีแถวในขั้นสุดท้ายที่กรอกช่อง REMAIN ไว้จริง
+	// ต้องแยกจาก Remain == 0 เพราะช่องว่างกับเลขศูนย์คนละความหมาย
+	HasRemain bool
+
 	// ใบนำเข้า 1 ใบมีใบนำออกออกมาได้หลายใบ = ต่ออายุหลายครั้ง
 	// นับจากจำนวนใบนำออกในชีตต่ออายุที่อยู่ใต้ใบนำเข้าใบนี้
 	LedgerExports   int
@@ -510,7 +514,15 @@ type baseLicense struct {
 	// ใบนำเข้าจะปิดงานก็ต่อเมื่อปิดครบทุกสาย
 	LastStepRows int
 	LastStepDone int
-	Branches     []LicenseBranch
+
+	// LastStepExpired = จำนวนสายในขั้นสุดท้ายที่ใบนำออกเลยวันหมดอายุไปแล้ว
+	//
+	// ใช้ตอบว่า "ใบนำออกใต้ใบนำเข้านี้หมดอายุครบทุกสายแล้วหรือยัง" ซึ่งคนละเรื่อง
+	// กับ LastStepDone (ปิดงานแล้วหรือยัง) — ใบที่หมดอายุแต่ไม่เคยตัดของออกเลย
+	// จะนับเป็น expired แต่ไม่นับเป็น done
+	LastStepExpired int
+
+	Branches []LicenseBranch
 }
 
 // LicenseBranch = ใบนำออก 1 ใบในขั้นสุดท้ายของใบนำเข้าใบหนึ่ง
@@ -580,9 +592,25 @@ func ledgerRenewPending(r models.LicenseRenewal) bool {
 	return r.ReceivedDate == nil && (r.EmailDate != nil || r.PaymentDate != nil)
 }
 
+// ledgerUntouchedStock: ใบนี้ยังไม่เคยตัดของออกเลยสักเครื่อง
+//
+// STOCK = จำนวนที่ยกมาอยู่บนใบนำออกใบนี้ · REMAIN = ยอดที่ยังไม่ได้นำออก
+// ทั้งสองช่องเท่ากัน แปลว่าไม่มีการเคลื่อนไหวบนใบนี้เลย งานยังไม่เริ่มด้วยซ้ำ
+// เช่น E05046900716 — STOCK 75 REMAIN 75 คือเครื่อง 75 ตัวยังอยู่ครบ
+//
+// ใช้ >= ไม่ใช่ == เพราะหน้างานกรอก REMAIN เกิน STOCK ได้ (พิมพ์ผิด / ยกยอดผิดช่อง)
+// ซึ่งก็ยังแปลว่าไม่เคยตัดออกเหมือนกัน
+//
+// ต้องเช็ค HasRemain ด้วย เพราะช่องว่างกับเลข 0 คนละความหมาย — ใบที่ยังไม่ได้
+// กรอก REMAIN จะได้ค่า 0 ติดมา ถ้าไม่เช็คธงนี้ ใบที่ STOCK 0 / REMAIN 0
+// (ยังไม่กรอกอะไรเลย) จะถูกนับว่า "ไม่เคยตัดของออก" ไปด้วย
+func ledgerUntouchedStock(r models.LicenseRenewal) bool {
+	return r.HasRemain && r.Stock > 0 && r.Remain >= r.Stock
+}
+
 // ledgerChainCompleted: สายนี้ปิดแล้วหรือยัง ตัดสินจากแถวสุดท้ายของสาย
 //
-// ใบนำออกปิดเมื่อ "หมดอายุ" เท่านั้น ไม่ใช่เมื่อ REMAIN ลงถึง 0
+// ใบนำออกปิดเมื่อ "หมดอายุ" เป็นหลัก ไม่ใช่เมื่อ REMAIN ลงถึง 0
 //
 // ของบนใบที่ขายไม่ออกจะค้างอยู่จนใบหมดอายุไปเอง แล้วกลายเป็นรายการคงค้าง
 // ไม่ใช่เรื่องผิดปกติ และไม่ได้แปลว่างานยังไม่จบ
@@ -594,6 +622,15 @@ func ledgerRenewPending(r models.LicenseRenewal) bool {
 //	ยังไม่ถึงวันหมดอายุ              — ใบยังใช้ได้ ยังตัดของออกได้อีก
 //	ไม่มีวันหมดอายุในไฟล์            — ไม่รู้ จึงไม่เดาว่าปิด
 //	ยื่นต่ออายุค้างอยู่ (ยังไม่ได้ใบใหม่) — งานยังเดินอยู่
+//	REMAIN ยังเท่ากับ STOCK          — ไม่เคยตัดของออกเลย งานยังไม่เริ่ม
+//
+// ข้อสุดท้ายแยกขาดจากเรื่อง "ของขายไม่ออก" ตรงที่ของขายไม่ออกคือตัดออกไปบ้างแล้ว
+// เหลือเศษค้างไว้ (STOCK 10 → REMAIN 3) ซึ่งถือว่าจบได้ ส่วน STOCK 75 REMAIN 75
+// คือไม่มีอะไรเกิดขึ้นบนใบนี้เลย จะเรียกว่าเสร็จสิ้นไม่ได้
+//
+// ใบกลุ่มหลังนี้จะไม่ค้างเป็น "ยังไม่เสร็จสิ้น" ตลอดไป เพราะยังมี auto-close
+// (LICENSE_AUTO_CLOSE_DAYS) ปิดให้หลังหมดอายุครบระยะผ่อนผัน โดยติดป้ายบอกไว้ว่า
+// ปิดเพราะหมดอายุแล้วไม่ได้ต่ออายุ ไม่ใช่เพราะทำงานจนจบ
 //
 // ยกเว้นคอลัมน์ NO. เขียนคำว่า Completed ไว้ตรง ๆ อันนั้นผู้ใช้สั่งเองถือว่าปิด
 func ledgerChainCompleted(last models.LicenseRenewal, now time.Time) bool {
@@ -603,10 +640,21 @@ func ledgerChainCompleted(last models.LicenseRenewal, now time.Time) bool {
 	if ledgerRenewPending(last) {
 		return false
 	}
+	if ledgerUntouchedStock(last) {
+		return false
+	}
 	if last.ExpireDate == nil {
 		return false
 	}
 	return last.ExpireDate.Truncate(24 * time.Hour).Before(now.Truncate(24 * time.Hour))
+}
+
+// ledgerRowExpired: ใบนำออกแถวนี้เลยวันหมดอายุไปแล้วหรือยัง
+func ledgerRowExpired(r models.LicenseRenewal, now time.Time) bool {
+	if r.ExpireDate == nil {
+		return false
+	}
+	return r.ExpireDate.Truncate(24 * time.Hour).Before(now.Truncate(24 * time.Hour))
 }
 
 // collectBaseLicenses: รวบรวมเลขใบอนุญาตทั้งหมดที่มีในระบบ แยกตามประเภท
@@ -719,20 +767,18 @@ func collectBaseLicenses() map[string]*baseLicense {
 	//   3. แถวสุดท้ายของโซ่ = ใบที่ใช้อยู่จริง (Current License)
 	//   4. ชื่อกลุ่มว่า Completed = งานชุดนั้นปิดแล้ว → ใบสุดท้ายของทุกโซ่ในกลุ่มขึ้นเสร็จสิ้น
 	//
-	//   5. หรือแถวสุดท้ายของโซ่มี REMAIN เหลือ 0 หรือติดลบ = นำออกหมดแล้ว
-	//   6. หรือแถวสุดท้ายมี REMAIN เท่ากับแถวก่อนหน้า = ยอดไม่ขยับแล้ว
+	//   5. หรือแถวสุดท้ายของโซ่เลยวันหมดอายุไปแล้ว = ใบใช้ไม่ได้อีก ถือว่าจบรอบ
+	//   6. ยกเว้นแถวนั้น REMAIN ยังเท่ากับ STOCK = ไม่เคยตัดของออกเลย งานยังไม่เริ่ม
 	//
-	// ข้อ 5 และ 6 จำเป็นเพราะผู้ใช้เขียนคำว่า Completed ไว้เฉพาะช่วงแรก ภายหลังไม่ได้เขียนแล้ว
+	// ข้อ 5 จำเป็นเพราะผู้ใช้เขียนคำว่า Completed ไว้เฉพาะช่วงแรก ภายหลังไม่ได้เขียนแล้ว
 	// ถ้าดูแต่ชื่อกลุ่ม ใบที่ปิดงานไปนานแล้วจะค้างอยู่ในรายการแจ้งเตือนตลอดไป
 	//
-	// REMAIN ติดลบคือกรอกเกินโควต้า (พิมพ์ผิดหน้างาน) ก็ถือว่าหมดเหมือนกัน
-	// ส่วน REMAIN ที่ยังไม่ได้กรอกเลยไม่นับ เพราะช่องว่างกับเลข 0 คนละความหมาย
+	// ข้อ 6 กันไม่ให้ใบที่ "หมดอายุโดยไม่มีใครแตะเลย" ถูกนับเป็นงานที่ทำเสร็จ
+	// ของที่ขายไม่ออกเหลือเศษค้างไว้ (STOCK 10 → REMAIN 3) ยังถือว่าจบได้ตามข้อ 5
+	// แต่ STOCK 75 → REMAIN 75 คือไม่มีอะไรเกิดขึ้นบนใบนั้นเลย ไม่ใช่งานที่เสร็จ
+	// ดู ledgerUntouchedStock สำหรับเหตุผลที่ต้องเช็ค HasRemain ควบคู่ไปด้วย
 	//
-	// ข้อ 6 คือกรณีของที่เหลือขายไม่ออก เช่นโซ่ที่ลงท้ายด้วย REMAIN 10 → 3 → 3 → 3
-	// ยอดหยุดนิ่งตั้งแต่แถวก่อนสุดท้าย แปลว่าไม่มีการตัดออกอีกแล้วทั้งที่ยังเหลือ 3
-	// ต้องเทียบกับแถวก่อนหน้าเท่านั้น เทียบแค่แถวสุดท้ายแถวเดียวไม่ได้
-	// ไม่งั้นทุกโซ่จะกลายเป็นเสร็จสิ้นหมด แล้วระบบจะไม่เตือนอะไรเลย
-	// และโซ่ที่มีแถวเดียวก็ไม่เข้าข้อนี้ เพราะไม่มีแถวก่อนหน้าให้เทียบ
+	// ใบที่ค้างด้วยข้อ 6 ยังถูก auto-close ปิดให้ตอนพ้นระยะผ่อนผัน จึงไม่แจ้งเตือนตลอดไป
 	//
 	// ดูเฉพาะแถวสุดท้ายของโซ่ เพราะระหว่างทาง REMAIN แตะ 0 หรือซ้ำกันชั่วคราวได้
 	// ก่อนจะมีการต่ออายุใบถัดไปมาเติมโควต้า (ยื่นต่ออายุมักล่าช้ากว่าของจริง)
@@ -812,10 +858,16 @@ func collectBaseLicenses() map[string]*baseLicense {
 					b.LastStepDone++
 					b.GroupNo = ledger[i].GroupNo
 				}
+				if ledgerRowExpired(ledger[i], now) {
+					b.LastStepExpired++
+				}
 				// STOCK / REMAIN ของใบนำเข้า = ยอดของทุกสายในขั้นสุดท้ายรวมกัน
 				// เช่น INDONESIA 50 + MALAYSIA 10 = 60 ไม่ใช่ 10 ของแถวสุดท้ายแถวเดียว
 				b.Stock += ledger[i].Stock
 				b.Remain += ledger[i].Remain
+				if ledger[i].HasRemain {
+					b.HasRemain = true
+				}
 				b.Branches = append(b.Branches, LicenseBranch{
 					Country:         strings.TrimSpace(ledger[i].Country),
 					ExportLicenseNo: strings.TrimSpace(ledger[i].ExportLicenseNo),
@@ -851,6 +903,7 @@ func collectBaseLicenses() map[string]*baseLicense {
 			b.Quota = ledger[i].Total
 			b.Stock = ledger[i].Stock
 			b.Remain = ledger[i].Remain
+			b.HasRemain = ledger[i].HasRemain
 		}
 	}
 
@@ -917,6 +970,19 @@ type LicenseOverviewRow struct {
 	Remain    int    `json:"remain"`
 	// LedgerCompleted = คอลัมน์ NO. เขียนว่า Completed
 	LedgerCompleted bool `json:"ledgerCompleted"`
+
+	// UntouchedStock = REMAIN ยังเท่ากับ STOCK — ไม่เคยตัดของออกจากใบนี้เลย
+	//
+	// ต่างจาก "รายการคงค้าง" (ตัดออกไปบ้างแล้ว เหลือเศษขายไม่ออก) ตรงที่กรณีนี้
+	// คืองานที่ยังไม่ได้เริ่ม หน้าเว็บจึงต้องแยกป้ายให้คนทำงานเห็นความต่าง
+	UntouchedStock bool `json:"untouchedStock"`
+
+	// ExportRenewalOverdue = ใบนำออกใต้ใบนำเข้านี้หมดอายุครบทุกสายแล้ว
+	// แต่ตัวใบนำเข้าเองยังไม่หมดอายุ และโควต้ายังเหลือ
+	//
+	// แปลว่าถึงคิวต้องยื่นขอใบนำออกใบใหม่ ไม่ใช่ปิดงาน — เป็นสถานะที่เร่งที่สุด
+	// เพราะของค้างอยู่โดยไม่มีใบที่ใช้ส่งออกได้
+	ExportRenewalOverdue bool `json:"exportRenewalOverdue"`
 
 	// Branches = ใบนำออกที่ออกพร้อมกันใต้ใบนำเข้าใบนี้ แบ่งตามประเทศ
 	// มีค่าเฉพาะใบที่แบ่งจริงมากกว่า 1 สาย
@@ -1062,6 +1128,9 @@ func buildLicenseOverview() []LicenseOverviewRow {
 			PreviousLicenseNos: chain.PreviousNos,
 		}
 
+		// ใบนำออกทุกสายในขั้นสุดท้ายของใบนำเข้าใบนี้เลยวันหมดอายุไปแล้วหรือยัง
+		exportAllExpired := false
+
 		// ข้อมูลของใบปัจจุบัน — เอาจากไฟล์ License ก่อน ถ้าไม่มีค่อยใช้วันหมดอายุจากไฟล์ต่ออายุ
 		if b, ok := base[key]; ok {
 			row.IssueDate = b.IssueDate
@@ -1078,6 +1147,10 @@ func buildLicenseOverview() []LicenseOverviewRow {
 			row.Stock = b.Stock
 			row.Remain = b.Remain
 			row.LedgerCompleted = b.LedgerCompleted
+			// REMAIN ยังเท่ากับ STOCK = ยังไม่เคยตัดของออกจากใบนี้เลย
+			row.UntouchedStock = b.HasRemain && b.Stock > 0 && b.Remain >= b.Stock
+			// ใบนำออกใต้ใบนำเข้านี้หมดอายุครบทุกสายแล้วหรือยัง
+			exportAllExpired = b.LastStepRows > 0 && b.LastStepExpired == b.LastStepRows
 			// แสดงเฉพาะตอนที่แบ่งจริงมากกว่า 1 สาย สายเดียวดูจากยอดรวมก็พอ
 			if len(b.Branches) > 1 {
 				row.Branches = b.Branches
@@ -1152,14 +1225,45 @@ func buildLicenseOverview() []LicenseOverviewRow {
 			}
 		}
 
+		// ใบนำเข้าไม่ปิดงานเพียงเพราะใบนำออกใต้มันหมดอายุ
+		//
+		// ใบนำออกมีอายุเดือนเดียว ใบนำเข้ามีอายุเป็นปี การที่ใบนำออกหมดอายุจึงเป็น
+		// เรื่องปกติที่เกิดซ้ำหลายรอบตลอดอายุใบนำเข้า — แปลว่า "ถึงคิวยื่นใบนำออกใบใหม่"
+		// ไม่ใช่ "งานบนใบนำเข้าจบแล้ว"
+		//
+		// ของเดิมพอทุกสายในขั้นสุดท้ายหมดอายุ ใบนำเข้าจะถูกปิดตามไปด้วยทันที
+		// ใบที่ยังใช้ได้อีกเป็นปีและยังมีเครื่องค้างอยู่จึงหลุดจากรายการที่ต้องทำ
+		// และหลุดจากอีเมลแจ้งเตือนไปเงียบ ๆ โดยไม่มีใครรู้ว่าต้องไปต่อใบนำออก
+		//
+		// จึงกันไว้เฉพาะใบที่ยังใช้ได้จริงและยังมีของเหลือ:
+		// ถ้าใบนำเข้าเองหมดอายุแล้ว หรือโควต้าถูกนำออกหมดแล้ว ก็ปิดตามเดิม
+		// และถ้าผู้ใช้เขียน Completed ไว้เองในคอลัมน์ NO. คำสั่งนั้นชนะเสมอ
+		if licenseType == models.LicenseTypeImport && row.LedgerCompleted && row.HasLedger &&
+			!ledgerGroupCompleted(row.GroupNo) && row.Remain > 0 &&
+			row.ExpiryDate != nil &&
+			!row.ExpiryDate.Truncate(24*time.Hour).Before(now.Truncate(24*time.Hour)) {
+			row.LedgerCompleted = false
+		}
+
 		// เสร็จสิ้นได้ 3 ทาง: เครื่องในใบนั้นปิดงานครบทุกเครื่อง
 		// ชีตต่ออายุเขียนไว้แล้วว่ากลุ่มนี้ Completed
 		// หรือหมดอายุมานานแล้วโดยไม่มีใครต่ออายุ = ผู้ใช้ไม่เอาใบนี้ต่อแล้ว
 		row.Completed = row.LedgerCompleted || (row.Items > 0 && row.CompletedItems >= row.Items)
+
+		// ถึงคิวต้องยื่นใบนำออกใบใหม่ — ใบนำออกหมดอายุครบทุกสาย แต่ใบนำเข้ายังเดินอยู่
+		row.ExportRenewalOverdue = licenseType == models.LicenseTypeImport &&
+			!row.Completed && exportAllExpired && row.Remain > 0
+
 		if !row.Completed && models.LicenseAutoCloseDue(row.ExpiryDate, autoCloseDays, now) {
 			row.Completed = true
 			row.AutoClosed = true
-			row.AutoCloseReason = models.LicenseAutoCloseNote
+			// แยกเหตุผลให้ชัดว่าใบนี้ปิดทั้งที่ไม่เคยตัดของออกเลยสักเครื่อง
+			// ไม่ใช่งานที่ทำจนจบ คนอ่านรายงานย้อนหลังจะได้ไม่เข้าใจผิด
+			if row.UntouchedStock {
+				row.AutoCloseReason = models.LicenseAutoCloseNoteUntouched
+			} else {
+				row.AutoCloseReason = models.LicenseAutoCloseNote
+			}
 		} else if !row.Completed {
 			row.AutoCloseInDays = models.LicenseAutoCloseInDays(row.ExpiryDate, autoCloseDays, now)
 		}
@@ -1177,8 +1281,18 @@ func buildLicenseOverview() []LicenseOverviewRow {
 		models.LicenseStatusNoDate:    3,
 		models.LicenseStatusCompleted: 4,
 	}
+	// ใบนำเข้าที่ใบนำออกหมดอายุครบทุกสายแล้วแต่ของยังค้างอยู่ ต้องขึ้นก่อนทุกอย่าง
+	//
+	// สถานะของมันคือ "ปกติ" เพราะตัวใบนำเข้าเองยังไม่หมดอายุ ถ้าเรียงตามสถานะอย่างเดียว
+	// ใบที่เร่งที่สุดจะไปจมอยู่กลางตาราง ทั้งที่เป็นใบที่ส่งของไม่ได้จริง ๆ ในตอนนี้
+	rankOf := func(r LicenseOverviewRow) int {
+		if r.ExportRenewalOverdue {
+			return -1
+		}
+		return rank[r.Status]
+	}
 	sort.SliceStable(out, func(i, j int) bool {
-		ri, rj := rank[out[i].Status], rank[out[j].Status]
+		ri, rj := rankOf(out[i]), rankOf(out[j])
 		if ri != rj {
 			return ri < rj
 		}
@@ -1487,7 +1601,6 @@ func GetLicenseUploadLog(c *gin.Context) {
 		}
 		out = append(out, row)
 	}
-
 
 	// Renewal (ประวัติการต่ออายุ)
 	{

@@ -9,6 +9,9 @@ import (
 
 // ใบนำออกปิดเมื่อหมดอายุ ไม่ใช่เมื่อ REMAIN ลงถึง 0
 // ของที่ขายไม่ออกค้างอยู่บนใบได้ แล้วกลายเป็นรายการคงค้างตอนใบหมดอายุ
+//
+// ข้อยกเว้นเดียวคือใบที่ REMAIN ยังเท่ากับ STOCK = ไม่เคยตัดของออกเลย
+// ดู TestLedgerChainCompletedUntouchedStock
 func TestLedgerChainCompleted(t *testing.T) {
 	now := time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)
 	day := func(d int) *time.Time {
@@ -55,6 +58,125 @@ func TestLedgerChainCompleted(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := ledgerChainCompleted(tc.last, now); got != tc.want {
 				t.Fatalf("ledgerChainCompleted = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// REMAIN ยังเท่ากับ STOCK = ไม่เคยตัดของออกจากใบนี้เลยสักเครื่อง
+//
+// ต้องแยกให้ออกจาก "ของขายไม่ออก" ซึ่งตัดไปบ้างแล้วเหลือเศษค้างไว้
+// กรณีหลังถือว่าจบได้ตอนใบหมดอายุ ส่วนกรณีแรกคืองานที่ยังไม่ได้เริ่ม
+//
+// เคสจริงจากไฟล์: E05046900716 — STOCK 75 REMAIN 75 ออก 9/9 หมด 8/10
+// ของเดิมขึ้น "เสร็จสิ้นแล้ว" ทันทีที่เลยวันหมดอายุ ทั้งที่เครื่อง 75 ตัวยังอยู่ครบ
+func TestLedgerChainCompletedUntouchedStock(t *testing.T) {
+	now := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
+	day := func(d int) *time.Time {
+		t := now.AddDate(0, 0, d)
+		return &t
+	}
+	row := func(stock, remain int, expire *time.Time) models.LicenseRenewal {
+		return models.LicenseRenewal{
+			Stock:      stock,
+			Remain:     remain,
+			HasRemain:  true,
+			ExpireDate: expire,
+		}
+	}
+
+	cases := []struct {
+		name string
+		last models.LicenseRenewal
+		want bool
+	}{
+		// ของจริงทั้งสามแถวในภาพ — ไม่มีแถวไหนที่ตัดของออกเลย
+		{"E05046900716 75/75 หมดอายุแล้ว", row(75, 75, day(-4)), false},
+		{"E05046900717 INDONESIA 50/50 หมดอายุแล้ว", row(50, 50, day(-4)), false},
+		{"E05046900718 MALAYSIA 10/10 หมดอายุแล้ว", row(10, 10, day(-4)), false},
+
+		// ตัดออกไปแล้วแม้เครื่องเดียว = งานเริ่มแล้ว ปิดตามวันหมดอายุตามเดิม
+		{"ตัดออกไป 45 เหลือ 30", row(75, 30, day(-4)), true},
+		{"ตัดออกหมดพอดี", row(75, 0, day(-4)), true},
+		{"กรอกเกินโควต้า", row(75, -3, day(-4)), true},
+		{"ของขายไม่ออก เหลือเศษ 3", row(10, 3, day(-40)), true},
+
+		// กรอก REMAIN เกิน STOCK (พิมพ์ผิดหน้างาน) ก็ยังแปลว่าไม่เคยตัดออก
+		{"REMAIN เกิน STOCK", row(75, 80, day(-4)), false},
+
+		// ยังไม่หมดอายุ ยังไงก็ยังไม่ปิดอยู่แล้ว
+		{"75/75 ยังไม่หมดอายุ", row(75, 75, day(30)), false},
+
+		// ช่องว่างกับเลข 0 คนละความหมาย — ใบที่ยังไม่ได้กรอก REMAIN เลย
+		// ต้องไม่ถูกนับว่า "ไม่เคยตัดของออก" เพราะยังไม่มีข้อมูลให้ตัดสิน
+		{"ไม่เคยกรอก REMAIN", models.LicenseRenewal{ExpireDate: day(-4)}, true},
+		{"STOCK 0 REMAIN 0 กรอกจริง", row(0, 0, day(-4)), true},
+
+		// คำสั่งที่ผู้ใช้เขียนเองในคอลัมน์ NO. ชนะทุกข้อเสมอ
+		{"75/75 แต่เขียน Completed เอง", func() models.LicenseRenewal {
+			r := row(75, 75, day(-4))
+			r.GroupNo = "Completed 02"
+			return r
+		}(), true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ledgerChainCompleted(tc.last, now); got != tc.want {
+				t.Fatalf("ledgerChainCompleted = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// ledgerUntouchedStock แยกกรณี "ไม่เคยตัดของออก" ออกจาก "ของขายไม่ออก"
+func TestLedgerUntouchedStock(t *testing.T) {
+	cases := []struct {
+		name                string
+		stock, remain       int
+		hasRemain, expected bool
+	}{
+		{"75/75", 75, 75, true, true},
+		{"60/60 รวมสองสาย", 60, 60, true, true},
+		{"75/30", 75, 30, true, false},
+		{"75/0", 75, 0, true, false},
+		{"75/-3", 75, -3, true, false},
+		{"80 เกิน 75", 75, 80, true, true},
+		{"ช่องว่าง 0/0", 0, 0, false, false},
+		{"กรอกจริง 0/0", 0, 0, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := models.LicenseRenewal{Stock: tc.stock, Remain: tc.remain, HasRemain: tc.hasRemain}
+			if got := ledgerUntouchedStock(r); got != tc.expected {
+				t.Fatalf("ledgerUntouchedStock = %v, want %v", got, tc.expected)
+			}
+		})
+	}
+}
+
+// ledgerRowExpired ตัดสินจากวันเดียวกับที่ ledgerChainCompleted ใช้
+func TestLedgerRowExpired(t *testing.T) {
+	now := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
+	day := func(d int) *time.Time {
+		t := now.AddDate(0, 0, d)
+		return &t
+	}
+	cases := []struct {
+		name   string
+		expire *time.Time
+		want   bool
+	}{
+		{"เลยมาแล้ว", day(-1), true},
+		{"หมดวันนี้", day(0), false},
+		{"ยังไม่ถึง", day(1), false},
+		{"ไม่มีวันหมดอายุ", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := models.LicenseRenewal{ExpireDate: tc.expire}
+			if got := ledgerRowExpired(r, now); got != tc.want {
+				t.Fatalf("ledgerRowExpired = %v, want %v", got, tc.want)
 			}
 		})
 	}

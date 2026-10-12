@@ -406,6 +406,8 @@ function LicenseDetailModal({
                 <span className={'wh-detail-value' + (detail.remain < 0 ? ' lo-remain-over' : '')}>
                   <strong>{detail.remain ?? 0}</strong> เครื่อง
                   {detail.remain < 0 && <span className="lo-done-count lo-remain-over">ใช้เกินโควต้า</span>}
+                  {/* คงเหลือเท่ากับสต็อก = ยังไม่เคยตัดของออกเลย ไม่ใช่ของค้างที่ขายไม่ออก */}
+                  {detail.untouchedStock && <span className="lo-flag-untouched">ยังไม่ได้นำของออก</span>}
                 </span>
               </div>
 
@@ -427,11 +429,12 @@ function LicenseDetailModal({
                     <strong>{b.remain ?? 0}</strong>
                     <span className="lo-branch-unit">/ {b.stock ?? 0} เครื่อง</span>
                   </span>
-                  {/* ช่อง REMAIN บอกว่าเหลือของบนใบนี้กี่เครื่อง
-                      0 = ตัดออกหมดแล้ว · มากกว่า 0 = ของที่ขายไม่ออก ค้างอยู่บนใบ */}
-                  <span className="lo-done-count">
-                    {(b.remain ?? 0) <= 0 ? 'นำออกหมดแล้ว' : 'รายการคงค้าง'}
-                  </span>
+                  {/* ช่อง REMAIN บอกว่าเหลือของบนใบนี้กี่เครื่อง — มีสามสถานะ ไม่ใช่สอง
+                      0 หรือติดลบ = ตัดออกหมดแล้ว
+                      เท่ากับ STOCK = ยังไม่เคยตัดออกเลย งานบนสายนี้ยังไม่เริ่ม
+                      ระหว่างกลาง    = ตัดไปบ้างแล้ว เหลือของขายไม่ออกค้างอยู่
+                      ของเดิมมีแค่สองสถานะ สายที่ยังไม่เริ่มจึงถูกเหมารวมเป็น "รายการคงค้าง" */}
+                  {(b.remain ?? 0) <= 0 ? <span className="lo-done-count">นำออกหมดแล้ว</span> : (b.stock ?? 0) > 0 && (b.remain ?? 0) >= (b.stock ?? 0) ? <span className="lo-flag-untouched">ยังไม่ได้นำของออก</span> : <span className="lo-done-count">รายการคงค้าง</span>}
                 </div>)}
             </div>
           </div>}
@@ -901,7 +904,9 @@ export default function LicenseOverviewPage() {
           columns,
           rows: items.map((r, i) => ({
             // ใบที่หมดอายุแล้วและยังไม่ปิดงาน ให้เน้นสีในไฟล์ จะได้เห็นทันที
-            __danger: r.status === 'EXPIRED',
+            // รวมถึงใบนำเข้าที่ใบนำออกใต้มันหมดอายุครบแล้ว ซึ่งสถานะจะขึ้นว่า "ปกติ"
+            // ตามวันหมดอายุของตัวมันเอง แต่ความจริงคือส่งของไม่ได้จนกว่าจะยื่นใบใหม่
+            __danger: r.status === 'EXPIRED' || r.exportRenewalOverdue,
             item: i + 1,
             licenseType: r.licenseType === 'IMPORT' ? 'Import' : 'Export',
             licenseNo: r.currentLicenseNo || DASH,
@@ -913,7 +918,9 @@ export default function LicenseOverviewPage() {
             issueDate: r.issueDate ? formatThaiDate(r.issueDate) : DASH,
             expiryDate: r.expiryDate ? formatThaiDate(r.expiryDate) : DASH,
             leadDate: r.leadDate ? formatThaiDate(r.leadDate) : DASH,
-            daysLeft: licenseDaysLabel(r.status, r.daysLeft),
+            // ป้ายสองอันนี้ต้องติดไปกับไฟล์ด้วย ไม่งั้นคนที่เปิดไฟล์อย่างเดียว
+            // จะเห็นแค่ "ปกติ" หรือ "หมดอายุแล้ว" โดยไม่รู้ว่าใบนั้นยังไม่เคยนำของออก
+            daysLeft: [licenseDaysLabel(r.status, r.daysLeft), r.exportRenewalOverdue ? 'ต้องยื่นใบนำออกใบใหม่' : '', r.untouchedStock ? 'ยังไม่ได้นำของออก' : ''].filter(Boolean).join(' · '),
             quota: r.quota ?? 0,
             stock: r.stock ?? 0,
             remain: r.remain ?? 0,
@@ -1141,6 +1148,11 @@ export default function LicenseOverviewPage() {
                   r.quota > 0 ? <>
                         <strong>{r.quota}</strong> เครื่อง
                       </> : DASH}
+                    {/* REMAIN ยังเท่ากับ STOCK = ไม่เคยตัดของออกจากใบนี้เลยสักเครื่อง
+                        ต่างจาก "รายการคงค้าง" ที่ตัดไปบ้างแล้วเหลือเศษขายไม่ออก */}
+                    {r.untouchedStock && <span className="lo-flag-untouched" title={`ยังไม่เคยนำของออกจากใบนี้เลย — คงเหลือ ${r.remain} จากสต็อก ${r.stock} เครื่อง`}>
+                        ยังไม่ได้นำของออก
+                      </span>}
                   </td>
                   <td data-label="วันที่ออกใบอนุญาต">{formatThaiDate(r.issueDate)}</td>
                   <td data-label="วันหมดอายุ">{formatThaiDate(r.expiryDate)}</td>
@@ -1155,6 +1167,12 @@ export default function LicenseOverviewPage() {
                   <td data-label="สถานะ / จำนวนวัน">
                     {statusBadge(r.status, r.daysLeft)}
                     {licenseDaysHint(r.status, r.daysLeft) && <span className="lo-days">{licenseDaysHint(r.status, r.daysLeft)}</span>}
+                    {/* ใบนำออกใต้ใบนำเข้านี้หมดอายุครบทุกสายแล้ว แต่ใบนำเข้ายังใช้ได้และของยังค้าง
+                        สถานะของใบจะขึ้นว่า "ปกติ" ตามวันหมดอายุของตัวมันเอง ซึ่งอ่านแล้วเข้าใจผิดได้
+                        ว่าไม่มีอะไรต้องทำ ทั้งที่ตอนนี้ส่งของไม่ได้จริง ๆ เพราะไม่มีใบนำออกที่ใช้ได้ */}
+                    {r.exportRenewalOverdue && <span className="lo-flag-overdue" title="ใบนำออกใต้ใบนี้หมดอายุครบทุกใบแล้ว แต่ยังมีเครื่องค้างอยู่ — ต้องยื่นขอใบนำออกใบใหม่ก่อนจึงจะส่งของได้">
+                        ต้องยื่นใบนำออกใบใหม่
+                      </span>}
                     {/* ใบที่ระบบปิดให้เองเพราะหมดอายุแล้วไม่มีใครต่อ — ต้องบอกเหตุผลไว้
                         ไม่งั้นผู้ใช้จะงงว่าทำไมใบขึ้นว่าเสร็จสิ้นทั้งที่ไม่เคยกดปิด */}
                     {r.autoClosed && <span className="lo-days" title={r.autoCloseReason || 'ระบบปิดให้อัตโนมัติ เนื่องจากหมดอายุแล้วไม่ได้ต่ออายุ'}>
