@@ -501,6 +501,10 @@ type baseLicense struct {
 	Stock           int // STOCK EXPORT LICENSE — จำนวนที่อยู่บนใบนำออก
 	Remain          int // REMAIN — ยอดคงเหลือ
 
+	// ImportNo = เลขใบนำเข้าที่ใบนำออกใบนี้สังกัดอยู่
+	// ใช้จับคู่กับทะเบียนเครื่อง เพื่อนับว่า WH จ่ายออกไปแล้วกี่เครื่อง
+	ImportNo string
+
 	// HasRemain = มีแถวในขั้นสุดท้ายที่กรอกช่อง REMAIN ไว้จริง
 	// ต้องแยกจาก Remain == 0 เพราะช่องว่างกับเลขศูนย์คนละความหมาย
 	HasRemain bool
@@ -542,8 +546,17 @@ type LicenseBranch struct {
 	ExpireDate   *time.Time `json:"expireDate"`
 }
 
-// ledgerGroupCompleted: คอลัมน์ NO. ในชีตต่ออายุบอกว่ากลุ่มนี้ปิดงานแล้วหรือยัง
+// ledgerGroupCompleted: ชื่อกลุ่มในคอลัมน์ NO. มีคำว่า Completed หรือไม่
+//
 // ในไฟล์จริงเขียนเป็น "Completed 01", "Completed 02" ... ส่วนกลุ่มที่ยังทำอยู่เป็นตัวเลขล้วน
+//
+// ใช้นับสถิติเท่านั้น — "ไฟล์นี้มีกี่กลุ่มที่ถูกตั้งชื่อว่า Completed"
+//
+// ห้ามใช้ตัดสินว่าใบปิดแล้วหรือยัง เพราะเป็นข้อความที่คนพิมพ์ไว้ตอนไหนก็ได้
+// ไม่ได้ผูกกับยอดของจริง และมักถูกพิมพ์ค้างข้ามรอบจนปิดใบที่ของยังเหลือ
+// (เช่น Completed 19 ที่มี 14 แถว คงเหลือ 3 เครื่องทุกแถว)
+//
+// ใบจะเสร็จสิ้นได้สองทางเท่านั้น: REMAIN ลงถึง 0 หรือมีคนกดอนุมัติปิด
 func ledgerGroupCompleted(groupNo string) bool {
 	return strings.Contains(strings.ToUpper(strings.TrimSpace(groupNo)), "COMPLETED")
 }
@@ -632,21 +645,36 @@ func ledgerUntouchedStock(r models.LicenseRenewal) bool {
 // (LICENSE_AUTO_CLOSE_DAYS) ปิดให้หลังหมดอายุครบระยะผ่อนผัน โดยติดป้ายบอกไว้ว่า
 // ปิดเพราะหมดอายุแล้วไม่ได้ต่ออายุ ไม่ใช่เพราะทำงานจนจบ
 //
-// ยกเว้นคอลัมน์ NO. เขียนคำว่า Completed ไว้ตรง ๆ อันนั้นผู้ใช้สั่งเองถือว่าปิด
+// คำว่า Completed ในคอลัมน์ NO. ไม่มีผลต่อสถานะแล้ว เป็นแค่ชื่อกลุ่มที่คนตั้งไว้
+// ไม่ได้ผูกกับยอดของจริง และถูกพิมพ์ค้างไว้ข้ามรอบจนปิดใบที่ของยังเหลือ
 func ledgerChainCompleted(last models.LicenseRenewal, now time.Time) bool {
-	if ledgerGroupCompleted(last.GroupNo) {
-		return true
-	}
 	if ledgerRenewPending(last) {
 		return false
 	}
-	if ledgerUntouchedStock(last) {
-		return false
-	}
-	if last.ExpireDate == nil {
-		return false
-	}
-	return last.ExpireDate.Truncate(24 * time.Hour).Before(now.Truncate(24 * time.Hour))
+	// ของบนใบถูกนำออกหมดแล้ว = งานบนใบนี้จบจริง
+	//
+	// นี่คือทางเดียวที่ระบบปิดใบให้เอง วันหมดอายุไม่เกี่ยวเลย
+	// ใบที่หมดอายุแล้วแต่ของยังค้าง ต้องให้คนกดอนุมัติปิดเอง ดู loadManualCloses
+	return ledgerStockDrained(last)
+}
+
+// ledgerStockDrained: ของบนใบนำออกใบนี้ถูกนำออกหมดแล้วหรือยัง
+//
+// REMAIN = 0 พอดีเท่านั้น ติดลบไม่นับ — ดู ledgerRemainInvalid
+//
+// ต้องเช็ค HasRemain ด้วย เพราะช่องว่างกับเลข 0 คนละความหมาย — ใบที่ยังไม่ได้
+// กรอก REMAIN จะได้ค่า 0 ติดมา ถ้าไม่เช็คธงนี้ ใบที่ยังไม่มีข้อมูลจะถูกปิดทันที
+func ledgerStockDrained(r models.LicenseRenewal) bool {
+	return r.HasRemain && r.Remain == 0
+}
+
+// ledgerRemainInvalid: REMAIN ติดลบ = ตัวเลขในทะเบียนผิด
+//
+// นำของออกเกินจำนวนที่มีอยู่บนใบเป็นไปไม่ได้จริง แปลว่ากรอกผิดที่ไหนสักแห่ง
+// เดิมนับรวมเป็น "นำออกหมดแล้ว" ซึ่งทำให้ใบที่ข้อมูลผิดถูกปิดเงียบ ๆ
+// และไม่มีใครรู้ว่าตัวเลขเพี้ยน
+func ledgerRemainInvalid(r models.LicenseRenewal) bool {
+	return r.HasRemain && r.Remain < 0
 }
 
 // ledgerRowExpired: ใบนำออกแถวนี้เลยวันหมดอายุไปแล้วหรือยัง
@@ -868,6 +896,9 @@ func collectBaseLicenses() map[string]*baseLicense {
 				if ledger[i].HasRemain {
 					b.HasRemain = true
 				}
+				if b.ImportNo == "" {
+					b.ImportNo = ledger[i].ImportLicenseNo
+				}
 				b.Branches = append(b.Branches, LicenseBranch{
 					Country:         strings.TrimSpace(ledger[i].Country),
 					ExportLicenseNo: strings.TrimSpace(ledger[i].ExportLicenseNo),
@@ -904,6 +935,7 @@ func collectBaseLicenses() map[string]*baseLicense {
 			b.Stock = ledger[i].Stock
 			b.Remain = ledger[i].Remain
 			b.HasRemain = ledger[i].HasRemain
+			b.ImportNo = ledger[i].ImportLicenseNo
 		}
 	}
 
@@ -946,16 +978,47 @@ type LicenseOverviewRow struct {
 	CompletedItems int  `json:"completedItems"`
 	Completed      bool `json:"completed"`
 
-	// AutoClosed = ใบนี้ปิดจบเพราะหมดอายุแล้วไม่มีใครต่ออายุ ไม่ใช่เพราะคนกดปิด
-	// แยกธงไว้เพื่อให้หน้าเว็บบอกผู้ใช้ได้ว่าทำไมใบถึงหายไปจากรายการที่ต้องทำ
-	AutoClosed      bool   `json:"autoClosed"`
-	AutoCloseReason string `json:"autoCloseReason,omitempty"`
-
-	// AutoCloseInDays = ใบที่หมดอายุแล้วแต่ยังอยู่ในระยะผ่อนผัน เหลืออีกกี่วันจึงจะถูกปิด
+	// ManualClosed = มีคนกดปุ่ม "อนุมัติปิดใบนำออก" ให้ใบนี้
 	//
-	// ตอบคำถาม "ใบหมดอายุไปแล้ว ทำไมยังไม่เสร็จสิ้น" ไว้บนหน้าจอเลย
-	// ไม่งั้นระยะผ่อนผันจะเป็นความลับที่มีแต่คนแก้ .env เท่านั้นที่รู้
-	AutoCloseInDays *int `json:"autoCloseInDays,omitempty"`
+	// ใบที่ REMAIN ยังไม่เป็น 0 จะเสร็จสิ้นได้ทางนี้ทางเดียว ระบบไม่ปิดให้เอง
+	// เก็บชื่อคนกดและเหตุผลไว้ด้วย เพราะเป็นการตัดสินใจของคน ไม่ใช่ของระบบ
+	// จึงต้องตอบได้เสมอว่าใครเป็นคนปิดและปิดเพราะอะไร
+	ManualClosed    bool       `json:"manualClosed"`
+	ManualClosedBy  string     `json:"manualClosedBy,omitempty"`
+	ManualClosedAt  *time.Time `json:"manualClosedAt,omitempty"`
+	ManualCloseNote string     `json:"manualCloseNote,omitempty"`
+
+	// ImportLicenseNo = ใบนำเข้าที่ใบนี้สังกัด (ใบนำเข้าเองก็คือเลขตัวเอง)
+	ImportLicenseNo string `json:"importLicenseNo,omitempty"`
+
+	// IssuedCount = จำนวนเครื่องที่ WH สแกนจ่ายออกจริง ภายใต้ใบนำเข้าใบนี้
+	IssuedCount int `json:"issuedCount"`
+
+	// SystemRemain = ยอดคงเหลือที่ระบบคำนวณเอง = STOCK − จำนวนที่จ่ายออกแล้ว
+	SystemRemain int `json:"systemRemain"`
+
+	// RemainMismatch = เลขที่คนกรอกในทะเบียน ไม่ตรงกับที่ระบบนับได้
+	//
+	// ไม่เอาค่าที่ระบบนับไปทับค่าที่คนกรอก เพราะผิดได้ทั้งสองฝั่ง — คนกรอกพลาดก็มี
+	// WH ลืมสแกนก็มี การทับค่าจะกลบปัญหาแทนที่จะเปิดเผย จึงเก็บทั้งคู่แล้วบอกว่าต่างกัน
+	RemainMismatch     bool   `json:"remainMismatch"`
+	RemainMismatchNote string `json:"remainMismatchNote,omitempty"`
+
+	// StockDrained = REMAIN ลงถึง 0 แล้ว — ของบนใบถูกนำออกหมด งานจบเอง
+	StockDrained bool `json:"stockDrained"`
+
+	// RemainInvalid = REMAIN ติดลบ — นำของออกเกินจำนวนที่มีบนใบ เป็นไปไม่ได้จริง
+	//
+	// ใบแบบนี้ปิดไม่ได้ และสถานะจะขึ้นว่า "ข้อมูลไม่ถูกต้อง" แทนจำนวนวัน
+	// เพราะการนับวันหมดอายุไม่มีความหมายถ้ายอดบนใบยังเชื่อไม่ได้
+	RemainInvalid bool `json:"remainInvalid"`
+
+	// RemainMissing = มีทะเบียนใบนี้อยู่ แต่ยังไม่ได้กรอกช่อง REMAIN เลย
+	//
+	// ต้องแยกจาก "ยังไม่เสร็จสิ้น" ให้ขาด เพราะคนละปัญหากัน
+	// ยังไม่เสร็จ = รู้ยอดแล้ว ของยังค้าง · ยังไม่ระบุจำนวน = ยังไม่รู้ด้วยซ้ำว่าค้างเท่าไร
+	// อย่างหลังแก้ด้วยการไปกรอกข้อมูล ไม่ใช่ด้วยการกดปิดใบ
+	RemainMissing bool `json:"remainMissing"`
 
 	// LeadDate = วันครบกำหนดยื่นขอต่ออายุ (เฉพาะใบนำออก)
 	// ใบนำออกมีอายุ 1 เดือน และต้องยื่นเข้าระบบ กสทช. ล่วงหน้า 15 วันทำการ
@@ -1074,7 +1137,8 @@ func buildLicenseOverview() []LicenseOverviewRow {
 	idx := buildRenewalLinkIndex(history)
 	base := collectBaseLicenses()
 	now := time.Now()
-	autoCloseDays := LicenseAutoCloseDays()
+	manualCloses := loadManualCloses()
+	issuedByImport := issuedCountByImport()
 
 	// ใบที่เป็น "ใบเก่า" ของโซ่ ไม่ต้องขึ้นเป็นแถวของตัวเอง
 	renewedAway := map[string]bool{}
@@ -1149,6 +1213,13 @@ func buildLicenseOverview() []LicenseOverviewRow {
 			row.LedgerCompleted = b.LedgerCompleted
 			// REMAIN ยังเท่ากับ STOCK = ยังไม่เคยตัดของออกจากใบนี้เลย
 			row.UntouchedStock = b.HasRemain && b.Stock > 0 && b.Remain >= b.Stock
+			// ของถูกนำออกหมดแล้ว — ทางเดียวที่ระบบปิดใบให้เอง
+			row.StockDrained = b.HasRemain && b.Remain <= 0
+			// มีทะเบียนแต่ไม่มีตัวเลข — ยังตัดสินอะไรไม่ได้จนกว่าจะมีคนไปกรอก
+			row.RemainMissing = !b.HasRemain
+			row.ImportLicenseNo = b.ImportNo
+			// REMAIN ติดลบ = ตัวเลขผิด ต้องให้คนไปแก้ทะเบียนก่อน
+			row.RemainInvalid = b.HasRemain && b.Remain < 0
 			// ใบนำออกใต้ใบนำเข้านี้หมดอายุครบทุกสายแล้วหรือยัง
 			exportAllExpired = b.LastStepRows > 0 && b.LastStepExpired == b.LastStepRows
 			// แสดงเฉพาะตอนที่แบ่งจริงมากกว่า 1 สาย สายเดียวดูจากยอดรวมก็พอ
@@ -1210,16 +1281,15 @@ func buildLicenseOverview() []LicenseOverviewRow {
 			row.ExpiryDate = chain.Steps[0].ExpireDate
 		}
 
-		// เผื่อกรณีตารางทะเบียนถูกล้างไปแล้วแต่ประวัติการต่ออายุยังอยู่
-		// ใช้ได้เฉพาะใบที่ไม่มีข้อมูลทะเบียนเหลือแล้วเท่านั้น
-		// ถ้ายังมีทะเบียนอยู่ ต้องเชื่อผลการตรวจ REMAIN ข้างบนเป็นหลัก
-		if !row.LedgerCompleted && !row.HasLedger {
+		// ชื่อกลุ่มในคอลัมน์ NO. ใช้บอกสถานะไม่ได้แล้ว — เก็บไว้แสดงอย่างเดียว
+		//
+		// เดิมใบที่ไม่มีข้อมูลทะเบียนเหลือแล้วจะถูกปิดจากคำว่า Completed ในชื่อกลุ่ม
+		// แต่คำนั้นเป็นข้อความที่คนพิมพ์ไว้ตอนไหนก็ได้ ไม่ได้ผูกกับยอดของจริง
+		// ใบที่ REMAIN ยังเหลือจึงถูกปิดทั้งที่ของยังค้าง (เช่น Completed 19 คงเหลือ 3)
+		if row.GroupNo == "" {
 			for _, st := range chain.Steps {
-				if ledgerGroupCompleted(st.GroupNo) {
-					row.LedgerCompleted = true
-					if row.GroupNo == "" {
-						row.GroupNo = st.GroupNo
-					}
+				if strings.TrimSpace(st.GroupNo) != "" {
+					row.GroupNo = st.GroupNo
 					break
 				}
 			}
@@ -1237,37 +1307,70 @@ func buildLicenseOverview() []LicenseOverviewRow {
 		//
 		// จึงกันไว้เฉพาะใบที่ยังใช้ได้จริงและยังมีของเหลือ:
 		// ถ้าใบนำเข้าเองหมดอายุแล้ว หรือโควต้าถูกนำออกหมดแล้ว ก็ปิดตามเดิม
-		// และถ้าผู้ใช้เขียน Completed ไว้เองในคอลัมน์ NO. คำสั่งนั้นชนะเสมอ
+		// การปิดใบทั้งที่ของค้างทำได้ทางเดียวคือกดปุ่มอนุมัติ
 		if licenseType == models.LicenseTypeImport && row.LedgerCompleted && row.HasLedger &&
-			!ledgerGroupCompleted(row.GroupNo) && row.Remain > 0 &&
+			row.Remain > 0 &&
 			row.ExpiryDate != nil &&
 			!row.ExpiryDate.Truncate(24*time.Hour).Before(now.Truncate(24*time.Hour)) {
 			row.LedgerCompleted = false
 		}
 
-		// เสร็จสิ้นได้ 3 ทาง: เครื่องในใบนั้นปิดงานครบทุกเครื่อง
-		// ชีตต่ออายุเขียนไว้แล้วว่ากลุ่มนี้ Completed
-		// หรือหมดอายุมานานแล้วโดยไม่มีใครต่ออายุ = ผู้ใช้ไม่เอาใบนี้ต่อแล้ว
+		// เสร็จสิ้นได้ 2 ทาง: REMAIN ลงถึง 0 ตามทะเบียน
+		// หรือเครื่องในใบนั้นถูกปิดงานครบทุกเครื่องในตารางรายเครื่อง
+		// (ทางที่ 3 คือคนกดอนุมัติปิดเอง ซึ่งอยู่ด้านล่าง)
 		row.Completed = row.LedgerCompleted || (row.Items > 0 && row.CompletedItems >= row.Items)
+
+		// ใบที่มีทะเบียนแต่ยังไม่ได้กรอก REMAIN ปิดไม่ได้ ไม่ว่าทางไหน
+		//
+		// ทางขวาของบรรทัดบนอ่านจากตารางเครื่องรายตัว ซึ่งลัดผ่านกติกา REMAIN ได้
+		// ใบที่ยังไม่มีตัวเลขสักช่องจึงเคยขึ้นว่า "เสร็จสิ้นแล้ว" ได้ ทั้งที่ระบบ
+		// ยังตอบไม่ได้ด้วยซ้ำว่าของค้างอยู่กี่เครื่อง
+		//
+		// ไม่มีตัวเลข = ยังตัดสินไม่ได้ ต้องให้คนไปกรอกก่อน หรือกดอนุมัติปิดเอง
+		// (การอนุมัติด้านล่างยังชนะข้อนี้ เพราะเป็นการตัดสินใจของคน)
+		if row.HasLedger && (row.RemainMissing || row.RemainInvalid) {
+			row.Completed = false
+		}
 
 		// ถึงคิวต้องยื่นใบนำออกใบใหม่ — ใบนำออกหมดอายุครบทุกสาย แต่ใบนำเข้ายังเดินอยู่
 		row.ExportRenewalOverdue = licenseType == models.LicenseTypeImport &&
 			!row.Completed && exportAllExpired && row.Remain > 0
 
-		if !row.Completed && models.LicenseAutoCloseDue(row.ExpiryDate, autoCloseDays, now) {
+		// คนกดอนุมัติปิดใบนี้ไว้
+		//
+		// มาแทนการปิดอัตโนมัติเมื่อหมดอายุครบ N วัน ซึ่งปิดใบที่ของยังค้างทิ้งไป
+		// โดยไม่มีใครรับรู้ ของที่ ship ไปแล้วแต่ไม่ได้ต่ออายุจะค้างในระบบตลอด
+		// คนหน้างานเท่านั้นที่รู้ว่าจบแล้วจริง ระบบจึงรอให้กดเอง
+		if mc, ok := manualCloses[models.LicenseManualCloseKey(licenseType, row.CurrentLicenseNo)]; ok {
 			row.Completed = true
-			row.AutoClosed = true
-			// แยกเหตุผลให้ชัดว่าใบนี้ปิดทั้งที่ไม่เคยตัดของออกเลยสักเครื่อง
-			// ไม่ใช่งานที่ทำจนจบ คนอ่านรายงานย้อนหลังจะได้ไม่เข้าใจผิด
-			if row.UntouchedStock {
-				row.AutoCloseReason = models.LicenseAutoCloseNoteUntouched
-			} else {
-				row.AutoCloseReason = models.LicenseAutoCloseNote
-			}
-		} else if !row.Completed {
-			row.AutoCloseInDays = models.LicenseAutoCloseInDays(row.ExpiryDate, autoCloseDays, now)
+			row.ManualClosed = true
+			row.ManualClosedBy = mc.ClosedBy
+			row.ManualClosedAt = &mc.ClosedAt
+			row.ManualCloseNote = mc.Note
 		}
+		// เทียบยอดที่คนกรอก กับยอดที่ระบบนับจากการสแกนจ่ายของจริง
+		//
+		// เช็คเฉพาะใบที่กรอก REMAIN ไว้แล้วและมี STOCK — ใบที่ยังไม่มีตัวเลข
+		// ไม่มีอะไรให้เทียบ และใบที่ WH ยังไม่เคยสแกนเลย (ยังไม่เริ่มจ่าย)
+		// ก็ไม่ควรขึ้นเตือน เพราะยังไม่ถึงเวลาที่ยอดจะต้องตรงกัน
+		if row.HasLedger && !row.RemainMissing && row.Stock > 0 {
+			row.IssuedCount = issuedByImport[NormalizeCodeValue(row.ImportLicenseNo)]
+			row.SystemRemain = row.Stock - row.IssuedCount
+			if row.IssuedCount > 0 && row.SystemRemain != row.Remain {
+				row.RemainMismatch = true
+				row.RemainMismatchNote = "ผู้ใช้กรอกคงเหลือ " + strconv.Itoa(row.Remain) +
+					" แต่ระบบนับได้ " + strconv.Itoa(row.SystemRemain) +
+					" (สต็อก " + strconv.Itoa(row.Stock) + " จ่ายออกแล้ว " + strconv.Itoa(row.IssuedCount) + ")"
+			}
+		}
+
 		row.Status, row.DaysLeft = licenseStatusOf(licenseType, row.ExpiryDate, row.Completed, now)
+		// ยอดบนใบยังเชื่อไม่ได้ การนับวันหมดอายุจึงไม่มีความหมาย
+		// แทนที่สถานะไปเลย ไม่ใช่แค่ติดป้ายเพิ่ม เพราะต้องเตะตาคนที่ต้องไปแก้
+		// ยกเว้นใบที่คนกดอนุมัติปิดเอง — คำสั่งของคนชนะเสมอ
+		if row.RemainInvalid && !row.ManualClosed {
+			row.Status, row.DaysLeft = models.LicenseStatusInvalid, nil
+		}
 		fillExportLeadDate(&row, now)
 
 		out = append(out, row)

@@ -29,6 +29,11 @@ var importLicenseColumns = map[string]func(*models.LicenseItem, string){
 	"no":     func(*models.LicenseItem, string) {},
 	"itemno": func(*models.LicenseItem, string) {},
 
+	// PART NO. = P/N ของ IT Controller ที่ WH สแกน (คนละช่องกับ "แบบ/รุ่น")
+	"partno":   func(m *models.LicenseItem, v string) { m.PartNo = strings.TrimSpace(v) },
+	"พาร์ทโน":  func(m *models.LicenseItem, v string) { m.PartNo = strings.TrimSpace(v) },
+	"เลขพาร์ท": func(m *models.LicenseItem, v string) { m.PartNo = strings.TrimSpace(v) },
+
 	"ตราอักษร": func(m *models.LicenseItem, v string) { m.Brand = v },
 	"brand":    func(m *models.LicenseItem, v string) { m.Brand = v },
 

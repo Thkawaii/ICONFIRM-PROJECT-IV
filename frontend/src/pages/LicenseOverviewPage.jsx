@@ -5,7 +5,7 @@ import SelectField from '../components/Selectfield.jsx';
 import { PreviewResult, ChangePreview } from '../components/FormatTools.jsx';
 import { WH_NAV_ITEMS } from './Importlicensepage.jsx';
 import { uploadImportLicense, previewImportLicense } from '../api/importLicense.js';
-import { getLicenseOverview, getLicenseDetail, deleteLicenseOverviewEntry, uploadLicenseRenewalHistory, previewLicenseRenewalHistory, licenseDaysLabel, licenseDaysHint, LICENSE_STATUS_CLASS, LICENSE_TYPE_LABEL, COUNTRY_ALL, COUNTRY_NONE, COUNTRY_MULTI, COUNTRY_MULTI_LABEL, isMultiCountry, countryKey, countryKeys, countryLabel, countryDisplay, clearLicenseOverview, setLicenseIssueDate, CLEAR_SCOPE, CLEAR_SCOPE_OPTIONS, TYPE_FILTER_ALL, STATUS_FILTER_ALL, TYPE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS, matchTypeFilter, matchStatusFilter, matchCountryFilter } from '../api/licenseOverview.js';
+import { getLicenseOverview, getLicenseDetail, deleteLicenseOverviewEntry, uploadLicenseRenewalHistory, previewLicenseRenewalHistory, licenseDaysLabel, licenseDaysHint, LICENSE_STATUS_CLASS, LICENSE_TYPE_LABEL, COUNTRY_ALL, COUNTRY_NONE, COUNTRY_MULTI, COUNTRY_MULTI_LABEL, isMultiCountry, countryKey, countryKeys, countryLabel, countryDisplay, clearLicenseOverview, setLicenseIssueDate, closeLicenseManually, reopenLicenseManually, lookupTrace, getLicenseSerials, CLEAR_SCOPE, CLEAR_SCOPE_OPTIONS, TYPE_FILTER_ALL, STATUS_FILTER_ALL, TYPE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS, matchTypeFilter, matchStatusFilter, matchCountryFilter } from '../api/licenseOverview.js';
 import { formatThaiDate } from '../lib/licenseExpiry.js';
 import { buildStyledXlsxWorkbookBlob, downloadBlob } from '../lib/xlsx.js';
 import { inPeriod, periodRangeLabel, periodFileTag } from '../lib/dateRange.js';
@@ -27,17 +27,6 @@ const DASH = '—';
 
 // คอลัมน์ NO. ในชีตต่ออายุเขียนว่า "Completed 01" สำหรับกลุ่มที่ปิดงานแล้ว
 // สถานะปิดงานมีป้ายบอกอยู่แล้ว ในช่องลำดับจึงเหลือแค่ตัวเลขพอ
-// autoCloseHint: ข้อความเตือนใบที่หมดอายุแล้วแต่ยังไม่ถึงคิวปิด
-//
-// อ่านต่อจากบรรทัด "หมดอายุไปแล้ว N วัน" ด้านบน จึงขึ้นต้นด้วยเงื่อนไข
-// ("หากไม่ต่ออายุ...") เพื่อบอกว่าผู้ใช้ต้องทำอะไรภายในเมื่อไหร่ ไม่ใช่แค่
-// บรรยายว่าระบบจะทำอะไร
-function autoCloseHint(days) {
-  if (!(days > 0)) return '';
-  // "ภายใน 1 วัน" ตีความได้สองแบบ (วันนี้ หรือพรุ่งนี้) จึงเขียนให้ชัดไปเลย
-  if (days === 1) return 'หากไม่ต่ออายุภายในวันนี้ ใบอนุญาตจะปิดอัตโนมัติ';
-  return `หากไม่ต่ออายุภายใน ${days} วัน ใบอนุญาตจะปิดอัตโนมัติ`;
-}
 function groupNoLabel(v) {
   const s = String(v || '').trim();
   if (!s) return '';
@@ -217,6 +206,199 @@ function buildChainRows(steps) {
   return list;
 }
 
+// ---------------------------------------------------------------------------
+// กล่องยืนยันอนุมัติปิดใบนำออก
+//
+// แยกเป็นกล่องของตัวเองแทนที่จะฝังไว้ในหน้ารายละเอียด เพราะการปิดใบเป็นการ
+// ตัดสินใจที่ย้อนกลับได้ยากในสายตาผู้ใช้ — ต้องมีจังหวะให้หยุดคิดก่อนกดจริง
+//
+// ช่องเหตุผลไม่บังคับ ใส่หรือไม่ใส่ก็ปิดได้ แต่ถ้าใส่ไว้จะช่วยคนที่มาอ่านย้อนหลัง
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// การ์ดผลการสืบ S/N
+//
+// ช่องค้นหาของหน้านี้หาได้แต่เลขใบอนุญาต พอพิมพ์หมายเลขเครื่องลงไปจึงขึ้นว่า
+// "ไม่พบรายการ" ทั้งที่เครื่องนั้นมีอยู่ในระบบ — แค่คนละระดับข้อมูล
+// ใบอนุญาตหนึ่งใบคุมเครื่องเป็นร้อย ตารางจึงไม่มีแถวของเครื่องรายตัว
+//
+// การ์ดนี้ตอบคำถามที่คนถามจริง ๆ เวลาพิมพ์ S/N ลงไป: เครื่องนี้ใช้ใบไหนอยู่
+// ออกวันไหน เหลืออีกกี่วัน
+// ---------------------------------------------------------------------------
+
+function SerialTraceCard({
+  trace,
+  notFound,
+  serial
+}) {
+  if (notFound) {
+    return <div className="lo-trace lo-trace-empty">
+        ไม่พบหมายเลขเครื่อง <strong>{serial}</strong> ในทะเบียนใบอนุญาตนำเข้า
+        <span className="lo-trace-hint">ตรวจว่าอัปโหลดบัญชีแสดงหมายเลขเครื่องของล็อตนี้แล้วหรือยัง</span>
+      </div>;
+  }
+  if (!trace) return null;
+
+  const days = typeof trace.daysLeft === 'number' ? trace.daysLeft : null;
+  // วันหมดอายุคือสิ่งที่คนมองหาเป็นอันดับแรก จึงให้มันเป็นตัวกำหนดสีทั้งการ์ด
+  const tone = days === null ? 'muted' : days < 0 ? 'bad' : days <= 15 ? 'warn' : 'ok';
+  const daysText = days === null ? '—' : days < 0 ? `เลยกำหนด ${Math.abs(days)} วัน` : `เหลือ ${days} วัน`;
+  const statusText = days === null ? 'ไม่มีวันหมดอายุ' : days < 0 ? 'หมดอายุแล้ว' : days <= 15 ? 'ใกล้หมดอายุ' : 'ปกติ';
+
+  const rows = [['Import License', trace.importLicenseNo], ['Export License ล่าสุด', trace.exportLicenseNo], ['วันที่ออกใบอนุญาต', formatThaiDate(trace.exportIssueDate)], ['วันหมดอายุ', formatThaiDate(trace.exportExpireAt)], ['ประเทศปลายทาง', trace.exportCountry], ['P/N', trace.partNo], ['ต่ออายุมาแล้ว', trace.renewalCount > 0 ? `${trace.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สถานะเครื่อง', trace.status === 'จ่ายแล้ว' ? `จ่ายให้เครื่อง ${trace.machineNo || '—'}` : trace.status]];
+
+  return <div className={`lo-trace lo-trace-${tone}`}>
+      <div className="lo-trace-head">
+        <div>
+          <span className="lo-trace-label">หมายเลขเครื่อง (S/N)</span>
+          <span className="lo-trace-sn">{trace.serialNo}</span>
+        </div>
+        <div className="lo-trace-days">
+          <span className="lo-trace-days-value">{daysText}</span>
+          <span className="lo-trace-days-status">{statusText}</span>
+        </div>
+      </div>
+
+      <dl className="lo-trace-grid">
+        {rows.map(([k, v]) => <div className="lo-trace-cell" key={k}>
+            <dt>{k}</dt>
+            <dd>{v || DASH}</dd>
+          </div>)}
+      </dl>
+
+      {trace.conflict && <div className="lo-trace-conflict">{trace.conflict}</div>}
+    </div>;
+}
+
+// ---------------------------------------------------------------------------
+// การ์ดผลการค้นหาเลขใบอนุญาต
+//
+// ใช้โครงเดียวกับการ์ดสืบ S/N เพราะคนถามคำถามเดียวกัน — "ใบนี้ใช้ใบนำออกเลขอะไร
+// ออกวันไหน เหลืออีกกี่วัน" ต่างแค่จุดตั้งต้นว่าพิมพ์เลขเครื่องหรือเลขใบลงไป
+//
+// ของที่การ์ดนี้มีเพิ่มคือยอด: สต็อก คงเหลือที่คนกรอก และจำนวนเครื่องจริงในระบบ
+// สามตัวนี้ควรสอดคล้องกัน ถ้าไม่ตรงจะขึ้นเตือนท้ายการ์ด
+// ---------------------------------------------------------------------------
+
+function LicenseTraceCard({
+  license
+}) {
+  if (!license) return null;
+
+  const days = typeof license.daysLeft === 'number' ? license.daysLeft : null;
+  const tone = days === null ? 'muted' : days < 0 ? 'bad' : days <= 15 ? 'warn' : 'ok';
+  const daysText = days === null ? '—' : days < 0 ? `เลยกำหนด ${Math.abs(days)} วัน` : `เหลือ ${days} วัน`;
+  const statusText = days === null ? 'ไม่มีวันหมดอายุ' : days < 0 ? 'หมดอายุแล้ว' : days <= 15 ? 'ใกล้หมดอายุ' : 'ปกติ';
+
+  const multi = (license.branches?.length ?? 0) > 1;
+
+  // ใบที่แตกหลายประเทศ เลขใบนำออกกับวันหมดอายุเล่าเป็นช่องเดียวไม่ได้
+  // ย้ายไปกางเป็นตารางสายด้านล่างแทน ช่องบนเหลือเฉพาะที่สรุปได้จริง
+  const rows = multi ? [['ประเทศ', license.country], ['ต่ออายุมาแล้ว', license.renewalCount > 0 ? `${license.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สต็อกใบนำออก', license.stock > 0 ? `${license.stock} เครื่อง` : DASH], ['คงเหลือ (ผู้ใช้กรอก)', license.hasRemain ? `${license.remain} เครื่อง` : 'ยังไม่ได้ระบุ'], ['จำนวน', license.machines > 0 ? `${license.machines} เครื่อง` : DASH], ['จ่ายแล้ว', license.machines > 0 ? `${license.issued} เครื่อง` : DASH], ['ยังไม่จ่าย', license.machines > 0 ? `${license.pending} เครื่อง` : DASH]] : [['Export License ล่าสุด', license.exportLicenseNo], ['วันที่ออกใบอนุญาต', formatThaiDate(license.exportIssueDate)], ['วันหมดอายุ', formatThaiDate(license.exportExpireAt)], ['ประเทศ', license.country], ['ต่ออายุมาแล้ว', license.renewalCount > 0 ? `${license.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สต็อกใบนำออก', license.stock > 0 ? `${license.stock} เครื่อง` : DASH], ['คงเหลือ (ผู้ใช้กรอก)', license.hasRemain ? `${license.remain} เครื่อง` : 'ยังไม่ได้ระบุ'], ['จำนวน', license.machines > 0 ? `${license.machines} เครื่อง` : DASH], ['จ่ายแล้ว', license.machines > 0 ? `${license.issued} เครื่อง` : DASH], ['ยังไม่จ่าย', license.machines > 0 ? `${license.pending} เครื่อง` : DASH]];
+
+  return <div className={`lo-trace lo-trace-${tone}`}>
+      <div className="lo-trace-head">
+        <div>
+          <span className="lo-trace-label">ใบอนุญาตนำเข้า</span>
+          <span className="lo-trace-sn">{license.importLicenseNo}</span>
+        </div>
+        <div className="lo-trace-days">
+          <span className="lo-trace-days-value">{daysText}</span>
+          <span className="lo-trace-days-status">{statusText}</span>
+        </div>
+      </div>
+
+      <dl className="lo-trace-grid">
+        {rows.map(([k, v]) => <div className="lo-trace-cell" key={k}>
+            <dt>{k}</dt>
+            <dd>{v || DASH}</dd>
+          </div>)}
+      </dl>
+
+      {/* แต่ละประเทศเดินต่ออายุของตัวเอง คนละเลขใบ คนละวันหมดอายุ
+          รวมเป็นบรรทัดเดียวแล้วอ่านไม่ออกว่าสายไหนต้องรีบต่อ */}
+      {multi && <div className="lo-trace-branches">
+          <div className="lo-trace-branch lo-trace-branch-head">
+            <span>ประเทศ</span>
+            <span>Export License ล่าสุด</span>
+            <span>วันที่ออกใบ</span>
+            <span>วันหมดอายุ</span>
+            <span className="lo-trace-branch-num">สต็อก</span>
+            <span className="lo-trace-branch-num">คงเหลือ</span>
+          </div>
+          {license.branches.map(b => <div className="lo-trace-branch" key={b.exportLicenseNo || b.country}>
+              <span className="lo-trace-branch-country">{b.country || DASH}</span>
+              <span className="lo-trace-branch-no">{b.exportLicenseNo || DASH}</span>
+              <span>{formatThaiDate(b.issueDate) || DASH}</span>
+              <span className={typeof b.daysLeft === 'number' && b.daysLeft < 0 ? 'lo-trace-branch-late' : ''}>
+                {formatThaiDate(b.expireAt) || DASH}
+              </span>
+              <span className="lo-trace-branch-num">{b.stock}</span>
+              <span className="lo-trace-branch-num">{b.hasRemain ? b.remain : DASH}</span>
+            </div>)}
+        </div>}
+
+      {license.mismatch && <div className="lo-trace-conflict">{license.mismatch}</div>}
+    </div>;
+}
+
+function LicenseCloseModal({
+  target,
+  onClose,
+  onDone
+}) {
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  if (!target) return null;
+  const remain = target.remain ?? 0;
+  async function confirm() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const res = await closeLicenseManually({
+        type: target.licenseType,
+        licenseNo: target.currentLicenseNo,
+        note: note.trim(),
+        remainAtClose: remain
+      });
+      toastSuccess(res?.message || 'ปิดใบอนุญาตแล้ว');
+      await onDone?.();
+      onClose?.();
+    } catch (err) {
+      toastError(err.message || 'ปิดใบไม่สำเร็จ');
+    } finally {
+      setSaving(false);
+    }
+  }
+  return <div className="wh-modal-overlay" onClick={onClose}>
+      <div className="wh-modal lo-close-modal" onClick={e => e.stopPropagation()}>
+        <h3 className="lo-close-modal-title">อนุมัติปิดใบนำออก</h3>
+
+        {/* เลขใบกับยอดค้างคือสองอย่างที่คนต้องอ่านก่อนตัดสินใจ
+            วางคู่กันในกรอบเดียว เพื่อให้เห็นพร้อมกันโดยไม่ต้องกวาดตาหา */}
+        <div className="lo-close-modal-card">
+          <span className="lo-close-modal-no">{target.currentLicenseNo}</span>
+          <span className="lo-close-modal-remain">
+            ยังมีของค้างอยู่ <strong>{remain}</strong> เครื่อง
+          </span>
+        </div>
+
+        <label className="lo-close-modal-label" htmlFor="lo-close-note">
+          เหตุผล
+        </label>
+        <input id="lo-close-note" className="lo-close-modal-input" type="text" value={note} onChange={e => setNote(e.target.value)} maxLength={255} autoFocus />
+        <div className="lo-close-modal-actions">
+          <button className="tsf-action-btn" onClick={onClose} disabled={saving}>
+            ยกเลิก
+          </button>
+          <button className="wh-issue-btn" onClick={confirm} disabled={saving}>
+            {saving ? 'กำลังบันทึก...' : 'ยืนยันปิดใบ'}
+          </button>
+        </div>
+      </div>
+    </div>;
+}
+
 function LicenseDetailModal({
   target,
   onClose,
@@ -227,6 +409,53 @@ function LicenseDetailModal({
   const [error, setError] = useState('');
   const [issueDate, setIssueDate] = useState('');
   const [savingDate, setSavingDate] = useState(false);
+  const [serials, setSerials] = useState([]);
+  const [serialCounts, setSerialCounts] = useState({
+    total: 0,
+    issued: 0,
+    pending: 0
+  });
+  const [serialsLoading, setSerialsLoading] = useState(false);
+  const [serialQ, setSerialQ] = useState('');
+
+  // เรียงเครื่องที่ยังไม่จ่ายขึ้นก่อนเสมอ เพราะนั่นคือสิ่งที่ต้องตามต่อ
+  // เครื่องที่จ่ายแล้วเป็นแค่หลักฐานย้อนหลัง ไม่ต้องรีบเห็น
+  const shownSerials = useMemo(() => {
+    const term = serialQ.trim().toLowerCase();
+    const list = term ? serials.filter(sr => [sr.serialNo, sr.partNo, sr.machineNo].some(v => String(v || '').toLowerCase().includes(term))) : serials;
+    return [...list].sort((a, b) => Number(a.issued) - Number(b.issued));
+  }, [serials, serialQ]);
+
+  // โหลดรายชื่อเครื่องแยกจากรายละเอียดใบ เพื่อให้กล่องเปิดขึ้นมาแสดงผลได้ทันที
+  // ไม่ต้องรอ query ที่หนักกว่า — ใบหนึ่งมีเครื่องเป็นร้อย
+  useEffect(() => {
+    if (!target) return;
+    let cancelled = false;
+    (async () => {
+      setSerialsLoading(true);
+      try {
+        const res = await getLicenseSerials({
+          type: target.licenseType,
+          licenseNo: target.currentLicenseNo
+        });
+        if (cancelled) return;
+        setSerials(res?.rows || []);
+        setSerialCounts({
+          total: res?.total ?? 0,
+          issued: res?.issued ?? 0,
+          pending: res?.pending ?? 0
+        });
+      } catch {
+        if (!cancelled) setSerials([]);
+      } finally {
+        if (!cancelled) setSerialsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [target]);
+
   useEffect(() => {
     if (!target) return;
     let cancelled = false;
@@ -281,6 +510,7 @@ function LicenseDetailModal({
       setSavingDate(false);
     }
   }
+
   return <div className="wh-modal-overlay" onClick={onClose}>
       <div className="wh-modal wh-detail-modal lo-detail-modal" onClick={e => e.stopPropagation()}>
         <div className="wh-detail-header">
@@ -459,6 +689,82 @@ function LicenseDetailModal({
 
 
 
+
+        {/* ใบที่ถูกปิดด้วยการอนุมัติ ต้องบอกให้ครบว่าใครปิด ตอนไหน และเพราะอะไร
+            เป็นการตัดสินใจของคน ไม่ใช่ผลจากตัวเลข จึงต้องตอบได้เสมอว่าใครรับผิดชอบ
+            เหตุผลที่กรอกตอนกดปิด ถ้าไม่เอามาแสดงตรงนี้ก็ไม่มีที่ไหนให้อ่านเลย */}
+        {detail.manualClosed && <div className="lo-closed-note">
+            <span className="lo-closed-note-title">ปิดใบด้วยการอนุมัติ</span>
+            <span className="lo-closed-note-meta">
+              {[detail.manualClosedBy && `โดย ${detail.manualClosedBy}`, detail.manualClosedAt && formatThaiDate(detail.manualClosedAt)].filter(Boolean).join(' · ') || 'ไม่มีข้อมูลผู้ปิด'}
+            </span>
+            <span className="lo-closed-note-reason">
+              {detail.manualCloseNote ? `เหตุผล: ${detail.manualCloseNote}` : 'ไม่ได้ระบุเหตุผลไว้'}
+            </span>
+          </div>}
+
+        <div className="wh-detail-divider" />
+
+        {/* เครื่องที่อยู่ใต้ใบนี้
+            ตารางหลักแสดงทีละใบอนุญาต ไม่มีที่ไหนบอกว่าใบหนึ่งคุมเครื่อง S/N อะไรบ้าง
+            และเหลือเครื่องไหนที่ยังไม่ได้จ่าย ซึ่งเป็นสิ่งที่ต้องรู้ก่อนตัดสินใจปิดใบ */}
+        <div className="wh-detail-section">
+          <span className="wh-detail-section-title">หมายเลขเครื่อง (IT Controller)</span>
+
+          {serialsLoading && <p className="wh-empty-cell">กำลังโหลด...</p>}
+
+          {!serialsLoading && serials.length === 0 && <p className="wh-empty-cell">
+              ไม่พบเครื่องในทะเบียนของใบนี้ — ตรวจว่าอัปโหลดบัญชีแสดงหมายเลขเครื่องแล้วหรือยัง
+            </p>}
+
+          {!serialsLoading && serials.length > 0 && <>
+              <div className="lo-serial-summary">
+                <span className="lo-serial-stat">
+                  จำนวน <b>{serialCounts.total}</b> เครื่อง
+                </span>
+                <span className="lo-serial-stat lo-serial-issued">
+                  จ่ายแล้ว <b>{serialCounts.issued}</b> เครื่อง
+                </span>
+                <span className="lo-serial-stat lo-serial-pending">
+                  ยังไม่จ่าย <b>{serialCounts.pending}</b> เครื่อง
+                </span>
+              </div>
+
+              {/* ยอดที่คนกรอกในทะเบียนควรตรงกับจำนวนเครื่องที่ยังไม่จ่าย
+                  ถ้าไม่ตรงคือสัญญาณว่าฝั่งใดฝั่งหนึ่งพลาด ต้องให้เห็นตรงนี้เลย */}
+              {typeof detail.remain === 'number' && detail.remain !== serialCounts.pending && <p className="lo-serial-warn">
+                  ผู้ใช้กรอกคงเหลือ {detail.remain} เครื่อง แต่ระบบนับได้ {serialCounts.pending} เครื่อง
+                </p>}
+
+              {/* ช่องค้นหาในรายการ — ใบหนึ่งมีได้ถึง 135 เครื่อง
+                  การไล่หาทีละแถวในกรอบที่เลื่อนได้คือสิ่งที่คนทำไม่ไหว */}
+              {serials.length > 12 && <input className="lo-serial-search" type="text" placeholder="ค้นหาในรายการนี้" value={serialQ} onChange={e => setSerialQ(e.target.value)} />}
+
+              <div className="lo-serial-list">
+                <div className="lo-serial-row lo-serial-head">
+                  <span>#</span>
+                  <span>หมายเลขเครื่อง</span>
+                  <span>P/N</span>
+                  <span className="lo-serial-state">สถานะ</span>
+                </div>
+                {shownSerials.map((sr, i) => <div className={'lo-serial-row' + (sr.issued ? ' is-issued' : '')} key={sr.serialNo}>
+                    <span className="lo-serial-idx">{i + 1}</span>
+                    <span className="lo-serial-no">{sr.serialNo}</span>
+                    <span className="lo-serial-meta">{sr.partNo || DASH}</span>
+                    <span className="lo-serial-state">
+                      {sr.issued ? <>
+                          <span className="lo-serial-chip is-done">จ่ายแล้ว</span>
+                          {sr.machineNo && <span className="lo-serial-mc">{sr.machineNo}</span>}
+                        </> : <span className="lo-serial-chip is-wait">ยังไม่จ่าย</span>}
+                    </span>
+                  </div>)}
+                {shownSerials.length === 0 && <div className="lo-serial-row">
+                    <span className="lo-serial-empty">ไม่พบเครื่องที่ตรงกับคำค้น</span>
+                  </div>}
+              </div>
+            </>}
+        </div>
+
         <div className="wh-detail-divider" />
 
         <div className="wh-detail-section lo-chain-section">
@@ -598,10 +904,20 @@ export default function LicenseOverviewPage() {
   const [typeFilter, setTypeFilter] = useState(TYPE_FILTER_ALL);
   const [statusFilter, setStatusFilter] = useState(STATUS_FILTER_ALL);
   const [search, setSearch] = useState('');
+  // ผลการสืบ S/N — ยิงเฉพาะตอนที่คำค้นดูเหมือนหมายเลขเครื่อง (ตัวเลขล้วน 8 หลักขึ้นไป)
+  // ไม่ยิงทุกครั้งที่พิมพ์ เพราะคนส่วนใหญ่ค้นเลขใบอนุญาตซึ่งมีตัวอักษรนำ
+  // ช่อง "ดูข้อมูลใบเดียว" แยกจากช่องกรองตาราง — คนละงานกัน
+  const [lookupQ, setLookupQ] = useState('');
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [trace, setTrace] = useState(null);
+  const [licTrace, setLicTrace] = useState(null);
+  const [traceMiss, setTraceMiss] = useState(false);
   const [country, setCountry] = useState(COUNTRY_ALL);
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
   const [detailTarget, setDetailTarget] = useState(null);
+  const [closeTarget, setCloseTarget] = useState(null);
+  const [reopening, setReopening] = useState(false);
   const [deletingKey, setDeletingKey] = useState(null);
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -610,6 +926,25 @@ export default function LicenseOverviewPage() {
   const [exportAnchor, setExportAnchor] = useState('');
   const [exportType, setExportType] = useState('ALL');
   const [exporting, setExporting] = useState(false);
+  // ยกเลิกการปิดใบ — ทำจากแถวได้เลย ไม่ต้องเปิดกล่องยืนยัน
+  // เพราะเป็นการ "ถอยกลับ" ซึ่งไม่ทำให้ข้อมูลหาย ต่างจากการกดปิด
+  async function reopenRow(r) {
+    if (reopening) return;
+    setReopening(true);
+    try {
+      const res = await reopenLicenseManually({
+        type: r.licenseType,
+        licenseNo: r.currentLicenseNo
+      });
+      toastSuccess(res?.message || 'เปิดใบกลับมาแล้ว');
+      await load();
+    } catch (err) {
+      toastError(err.message || 'ยกเลิกไม่สำเร็จ');
+    } finally {
+      setReopening(false);
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError('');
@@ -630,6 +965,41 @@ export default function LicenseOverviewPage() {
   useEffect(() => {
     setPage(1);
   }, [typeFilter, statusFilter, search, pageSize, country]);
+
+  useEffect(() => {
+    const q = lookupQ.trim();
+    // ยิงเฉพาะคำค้นที่ยาวพอจะเป็นเลขเครื่องหรือเลขใบ
+    if (q.length < 8) {
+      setTrace(null);
+      setLicTrace(null);
+      setTraceMiss(false);
+      setLookupLoading(false);
+      return;
+    }
+    let alive = true;
+    setLookupLoading(true);
+    // หน่วงไว้ให้คนพิมพ์จบก่อน ไม่งั้นยิงทุกตัวอักษร
+    const timer = setTimeout(async () => {
+      try {
+        const res = await lookupTrace(q);
+        if (!alive) return;
+        setTrace(res?.kind === 'serial' ? res.trace : null);
+        setLicTrace(res?.kind === 'license' ? res.license : null);
+        setTraceMiss(false);
+      } catch {
+        if (!alive) return;
+        setTrace(null);
+        setLicTrace(null);
+        setTraceMiss(true);
+      } finally {
+        if (alive) setLookupLoading(false);
+      }
+    }, 350);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [lookupQ]);
 
   // กรองฝั่ง client เพื่อให้สลับแท็บได้ทันทีโดยไม่ต้องยิง API ใหม่
   const filtered = useMemo(() => {
@@ -816,81 +1186,64 @@ export default function LicenseOverviewPage() {
       if (groups.has(COUNTRY_MULTI)) names.push(COUNTRY_MULTI);
       if (groups.has(COUNTRY_NONE)) names.push(COUNTRY_NONE);
 
+      // คอลัมน์ในไฟล์ Excel — เอาเฉพาะที่ใช้ตัดสินใจจริง
+      //
+      // ของเดิมมี 15 คอลัมน์ รวมเลขใบต้นฉบับ รุ่น วันที่ออกใบ วันครบกำหนดยื่น
+      // โควต้า จำนวนครั้งที่ต่อ และวันต่ออายุล่าสุด ซึ่งเป็นข้อมูลอ้างอิง
+      // ไม่ใช่ข้อมูลที่ใช้ตัดสินว่า "ใบไหนต้องทำอะไรก่อน"
+      //
+      // คนที่เปิดไฟล์นี้กำลังถามสามคำถาม: ใบไหนใกล้หมด · เหลือของเท่าไร · ต้องทำอะไร
+      // คอลัมน์ที่ไม่ตอบสามข้อนี้ทำให้ต้องเลื่อนจอไปขวาเรื่อย ๆ จนหาของที่ต้องการไม่เจอ
+      // รายละเอียดเต็มยังดูได้ในหน้าเว็บ ไฟล์นี้มีไว้ให้เห็นภาพรวมและส่งต่อ
       const columns = [{
         key: 'item',
-        header: 'Item',
+        header: 'ลำดับ',
         type: 'center',
-        width: 8
+        width: 7
       }, {
         key: 'licenseType',
-        header: 'Type',
+        header: 'ประเภท',
         type: 'center',
-        width: 12
+        width: 11
       }, {
         key: 'licenseNo',
-        header: 'Current License No.',
-        type: 'text',
-        width: 22
-      }, {
-        key: 'originalNo',
-        header: 'Original License No.',
-        type: 'text',
+        header: 'เลขใบอนุญาต',
         width: 22
       }, {
         key: 'country',
-        header: 'Country',
-        type: 'center',
-        width: 16
-      }, {
-        key: 'model',
-        header: 'Model',
-        type: 'text',
-        width: 16
-      }, {
-        key: 'issueDate',
-        header: 'Issue Date',
-        type: 'center',
-        width: 18
-      }, {
-        key: 'expiryDate',
-        header: 'Expiry Date',
-        type: 'center',
-        width: 18
-      }, {
-        key: 'leadDate',
-        header: 'Renewal Submission Due',
-        type: 'center',
-        width: 22
-      }, {
-        key: 'daysLeft',
-        header: 'Status / Days',
-        type: 'center',
-        width: 22
-      }, {
-        key: 'quota',
-        header: 'Total',
-        type: 'center',
-        width: 14
-      }, {
-        key: 'stock',
-        header: 'Stock Export License',
-        type: 'center',
+        header: 'ประเทศ',
         width: 20
       }, {
-        key: 'remain',
-        header: 'Remain',
+        key: 'expiryDate',
+        header: 'วันหมดอายุ',
         type: 'center',
-        width: 14
+        width: 15
       }, {
-        key: 'renewalCount',
-        header: 'Renewal Count',
+        key: 'daysLeft',
+        header: 'คงเหลือ (วัน)',
         type: 'center',
-        width: 18
+        width: 13
       }, {
-        key: 'lastRenewal',
-        header: 'Last Renewal',
+        key: 'statusText',
+        header: 'สถานะ',
         type: 'center',
         width: 16
+      }, {
+        key: 'stock',
+        header: 'จำนวนเครื่อง',
+        type: 'center',
+        width: 13
+      }, {
+        key: 'remain',
+        header: 'คงเหลือ (เครื่อง)',
+        type: 'center',
+        width: 15
+      }, {
+        // แยกคำเตือนออกมาเป็นคอลัมน์ของตัวเอง
+        // ของเดิมยัดรวมอยู่ในช่องสถานะจนยาวเป็นย่อหน้า อ่านในตารางไม่ได้
+        key: 'note',
+        header: 'สิ่งที่ต้องทำ / หมายเหตุ',
+        width: 46
       }];
 
       const sheets = names.map(key => {
@@ -908,32 +1261,98 @@ export default function LicenseOverviewPage() {
             // สีแดงสงวนไว้ให้ "ใบที่หมดอายุ" เท่านั้น ใบที่ยังไม่หมดอายุแต่ต้องยื่น
             // ใบนำออกใบใหม่ ไม่ทาสีแถว — ข้อความในคอลัมน์สถานะบอกไว้แล้ว
             // ถ้าทาสีด้วยจะอ่านปนกับใบที่หมดอายุจริง แล้วสีแดงจะเสียความหมาย
+            // ใบที่หมดอายุแล้วและยังไม่ปิดงาน ให้เน้นสีในไฟล์ จะได้เห็นทันที
+            // สีแดงสงวนไว้ให้ใบที่หมดอายุจริงเท่านั้น ถ้าทาสีทุกเรื่องสีแดงจะเสียความหมาย
             __danger: r.status === 'EXPIRED',
             item: i + 1,
-            licenseType: r.licenseType === 'IMPORT' ? 'Import' : 'Export',
+            licenseType: r.licenseType === 'IMPORT' ? 'นำเข้า' : 'นำออก',
             licenseNo: r.currentLicenseNo || DASH,
-            originalNo: r.originalLicenseNo || DASH,
-            // ชีตประเทศเดี่ยวใช้ชื่อประเทศของชีตนั้น ส่วนชีต "หลายประเทศ"
-            // ต้องกางชื่อประเทศทั้งหมดของใบให้เห็น ไม่งั้นไม่รู้ว่าแถวนี้ครอบคลุมที่ไหนบ้าง
             country: key === COUNTRY_MULTI ? countryDisplay(r.country) : countryLabel(key),
-            model: r.model || DASH,
-            issueDate: r.issueDate ? formatThaiDate(r.issueDate) : DASH,
             expiryDate: r.expiryDate ? formatThaiDate(r.expiryDate) : DASH,
-            leadDate: r.leadDate ? formatThaiDate(r.leadDate) : DASH,
-            // ป้ายสองอันนี้ต้องติดไปกับไฟล์ด้วย ไม่งั้นคนที่เปิดไฟล์อย่างเดียว
-            // จะเห็นแค่ "ปกติ" หรือ "หมดอายุแล้ว" โดยไม่รู้ว่าใบนั้นยังไม่เคยนำของออก
-            daysLeft: [licenseDaysLabel(r.status, r.daysLeft), r.exportRenewalOverdue ? 'ต้องยื่นใบนำออกใบใหม่' : '', r.untouchedStock ? 'ยังไม่ได้นำของออก' : ''].filter(Boolean).join(' · '),
-            quota: r.quota ?? 0,
+            // ตัวเลขล้วน เพื่อให้เรียงและกรองใน Excel ได้ ติดลบ = หมดอายุไปแล้วกี่วัน
+            daysLeft: typeof r.daysLeft === 'number' ? r.daysLeft : DASH,
+            statusText: licenseDaysLabel(r.status, r.daysLeft),
             stock: r.stock ?? 0,
             remain: r.remain ?? 0,
-            renewalCount: r.renewalCount ?? 0,
-            lastRenewal: r.lastRenewalDate ? formatThaiDate(r.lastRenewalDate) : DASH
+            note: [r.exportRenewalOverdue ? 'ต้องยื่นใบนำออกใบใหม่' : '', r.untouchedStock ? 'ยังไม่ได้นำของออก' : '', r.remainMissing && !r.completed ? 'ยังไม่ได้ระบุจำนวน' : '', r.remainInvalid ? 'ข้อมูลไม่ถูกต้อง (REMAIN ติดลบ)' : '', r.remainMismatch ? r.remainMismatchNote : '', r.manualClosed ? `ปิดโดยอนุมัติ${r.manualClosedBy ? ' — ' + r.manualClosedBy : ''}${r.manualCloseNote ? ' (' + r.manualCloseNote + ')' : ''}` : ''].filter(Boolean).join(' · ') || DASH
           }))
         };
       });
 
+      // ชีตสรุปไว้หน้าแรก
+      //
+      // ไฟล์นี้แยกชีตตามประเทศ ซึ่งดีเวลาต้องการเจาะดูทีละประเทศ แต่พอเปิดไฟล์มา
+      // จะไม่รู้เลยว่าภาพรวมเป็นยังไง ต้องไล่เปิดทุกชีตแล้วบวกเอง
+      // ชีตนี้ตอบคำถามแรกสุด: ตอนนี้มีใบที่ต้องรีบจัดการกี่ใบ อยู่ประเทศไหน
+      const sumCols = [{
+        key: 'group',
+        header: 'ประเทศ',
+        width: 22
+      }, {
+        key: 'total',
+        header: 'ใบทั้งหมด',
+        type: 'center',
+        width: 12
+      }, {
+        key: 'expired',
+        header: 'หมดอายุแล้ว',
+        type: 'center',
+        width: 13
+      }, {
+        key: 'expiring',
+        header: 'ใกล้หมดอายุ',
+        type: 'center',
+        width: 13
+      }, {
+        key: 'normal',
+        header: 'ปกติ',
+        type: 'center',
+        width: 10
+      }, {
+        key: 'done',
+        header: 'เสร็จสิ้นแล้ว',
+        type: 'center',
+        width: 13
+      }, {
+        key: 'remain',
+        header: 'ของค้างรวม (เครื่อง)',
+        type: 'center',
+        width: 19
+      }, {
+        key: 'todo',
+        header: 'ใบที่ต้องจัดการ',
+        type: 'center',
+        width: 15
+      }];
+
+      const tally = rowsIn => ({
+        total: rowsIn.length,
+        expired: rowsIn.filter(r => r.status === 'EXPIRED').length,
+        expiring: rowsIn.filter(r => r.status === 'EXPIRING').length,
+        normal: rowsIn.filter(r => r.status === 'VALID' || r.status === 'NO_DATE').length,
+        done: rowsIn.filter(r => r.completed).length,
+        remain: rowsIn.reduce((acc, r) => acc + (r.remain ?? 0), 0),
+        // ใบที่ต้องลงมือทำจริง — หมดอายุหรือใกล้หมด และยังไม่ปิดงาน
+        todo: rowsIn.filter(r => !r.completed && (r.status === 'EXPIRED' || r.status === 'EXPIRING')).length
+      });
+
+      const sumRows = names.map(key => ({
+        group: key === COUNTRY_MULTI ? COUNTRY_MULTI_LABEL : countryLabel(key),
+        ...tally([...groups.get(key)])
+      }));
+      const allTally = tally(list);
+      sumRows.push({
+        group: 'รวมทั้งหมด',
+        ...allTally,
+        __danger: allTally.todo > 0
+      });
+
       const blob = buildStyledXlsxWorkbookBlob({
-        sheets
+        sheets: [{
+          sheetName: 'สรุป',
+          columns: sumCols,
+          rows: sumRows
+        }, ...sheets]
       });
       const tag = periodFileTag(exportPeriod, exportAnchor);
       downloadBlob(blob, `License-by-country-${tag}.xlsx`);
@@ -1060,6 +1479,26 @@ export default function LicenseOverviewPage() {
             </div>)}
         </div>}
 
+      {/* ช่องดูข้อมูลใบเดียว แยกจากช่องกรองตารางด้านล่าง เพราะทำคนละอย่าง
+          ช่องกรองย่อแถวในตารางให้แคบลง ส่วนช่องนี้ดึงใบเดียวขึ้นมากางรายละเอียด
+          วางไว้ใต้การ์ดสรุป เพราะเป็นคำถามแรกที่คนเปิดหน้านี้มาถาม
+          ไม่ใช่สิ่งที่ค่อยนึกได้ตอนเลื่อนลงไปถึงตาราง */}
+      <div className="lo-lookup">
+        <div className="lo-lookup-field">
+          <label className="lo-lookup-label" htmlFor="lo-lookup-input">
+            ดูข้อมูลใบอนุญาต
+          </label>
+          <input id="lo-lookup-input" className="lo-lookup-input" type="text" value={lookupQ} onChange={e => setLookupQ(e.target.value)} />
+          {lookupLoading && <span className="lo-lookup-hint">กำลังค้นหา...</span>}
+        </div>
+        {(trace || licTrace || lookupQ.trim()) && <button type="button" className="lo-lookup-clear" onClick={() => setLookupQ('')}>
+            ล้าง
+          </button>}
+      </div>
+
+      <SerialTraceCard trace={trace} notFound={traceMiss} serial={lookupQ.trim()} />
+      <LicenseTraceCard license={licTrace} />
+
       <div className="tsf-history-toolbar">
         <div className="wh-history-filters">
           <div className="tsf-history-pagesize">
@@ -1099,7 +1538,7 @@ export default function LicenseOverviewPage() {
             </div>
           </div>
         </div>
-        <input className="wh-search" type="text" placeholder="ค้นหาเลขใบอนุญาต / ประเทศ / รุ่น" value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="wh-search" type="text" placeholder="กรองตาราง — เลขใบอนุญาต / ประเทศ / รุ่น" value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       <div className="wh-table-card">
@@ -1175,15 +1614,22 @@ export default function LicenseOverviewPage() {
                     {r.exportRenewalOverdue && <span className="lo-flag-overdue" title="ใบนำออกใต้ใบนี้หมดอายุครบทุกใบแล้ว แต่ยังมีเครื่องค้างอยู่ — ต้องยื่นขอใบนำออกใบใหม่ก่อนจึงจะส่งของได้">
                         ต้องยื่นใบนำออกใบใหม่
                       </span>}
-                    {/* ใบที่ระบบปิดให้เองเพราะหมดอายุแล้วไม่มีใครต่อ — ต้องบอกเหตุผลไว้
-                        ไม่งั้นผู้ใช้จะงงว่าทำไมใบขึ้นว่าเสร็จสิ้นทั้งที่ไม่เคยกดปิด */}
-                    {r.autoClosed && <span className="lo-days" title={r.autoCloseReason || 'ระบบปิดให้อัตโนมัติ เนื่องจากหมดอายุแล้วไม่ได้ต่ออายุ'}>
-                        ปิดอัตโนมัติ (ไม่ได้ต่ออายุ)
+                    {/* ใบที่คนกดอนุมัติปิด ต้องบอกว่าใครปิด ไม่งั้นอ่านย้อนหลังไม่ออก
+                        ว่าใบนี้จบเพราะของหมด หรือเพราะมีคนตัดสินใจปิดทั้งที่ของยังค้าง */}
+                    {/* ยังไม่ได้กรอก REMAIN = ยังไม่รู้ด้วยซ้ำว่าของค้างเท่าไร
+                        คนละเรื่องกับ "ยังไม่เสร็จสิ้น" ซึ่งรู้ยอดแล้วแต่ของยังไม่หมด
+                        อย่างหลังแก้ด้วยการกดปิดใบ อย่างนี้แก้ด้วยการไปกรอกตัวเลข */}
+                    {/* ยอดที่คนกรอกไม่ตรงกับที่ระบบนับจากการสแกนจ่ายของจริง
+                        ไม่บอกว่าฝั่งไหนผิด เพราะผิดได้ทั้งคู่ — คนกรอกพลาด หรือ WH ลืมสแกน
+                        บอกแค่ว่าต่างกันเท่าไร ให้คนไปตรวจเอง */}
+                    {r.remainMismatch && <span className="lo-flag-overdue" title={r.remainMismatchNote}>
+                        ยอดไม่ตรงกับระบบ
                       </span>}
-                    {/* ใบที่หมดอายุแล้วแต่ยังไม่ถึงคิวปิด ต้องบอกไว้ว่าเหลืออีกกี่วัน
-                        ไม่งั้นผู้ใช้จะถามว่า "หมดอายุไปแล้ว ทำไมยังไม่เสร็จสิ้น" */}
-                    {!r.autoClosed && r.autoCloseInDays > 0 && <span className="lo-days" title="ครบกำหนดแล้วระบบจะปิดใบนี้เป็นเสร็จสิ้น และหยุดแจ้งเตือน — ถ้าต่ออายุภายหลัง เพียงนำเข้าข้อมูลใบใหม่ รายการจะกลับมาแจ้งเตือนอีกครั้ง">
-                        {autoCloseHint(r.autoCloseInDays)}
+                    {r.remainMissing && !r.manualClosed && <span className="lo-flag-untouched" title="ทะเบียนใบนี้ยังไม่มีตัวเลขในช่อง REMAIN — ระบบจึงบอกไม่ได้ว่าเหลือของกี่เครื่อง และยังปิดใบให้เองไม่ได้">
+                        ยังไม่ได้ระบุจำนวน
+                      </span>}
+                    {r.manualClosed && <span className="lo-days" title={[r.manualClosedBy && `ปิดโดย ${r.manualClosedBy}`, r.manualCloseNote].filter(Boolean).join(' · ') || 'ปิดโดยการอนุมัติ'}>
+                        ปิดโดยอนุมัติ{r.manualClosedBy ? ` (${r.manualClosedBy})` : ''}
                       </span>}
                   </td>
                   <td data-label="ต่ออายุ">{r.renewalCount ?? 0} ครั้ง</td>
@@ -1192,6 +1638,17 @@ export default function LicenseOverviewPage() {
                   </td>
                   <td className="wh-cell-action">
                     <div className="lo-row-actions">
+                      {/* อนุมัติปิดใบวางไว้ก่อนปุ่มรายละเอียด เพราะเป็นงานที่ต้องทำ
+                          ส่วนรายละเอียดเป็นแค่การดู ขึ้นเฉพาะใบที่ของยังค้างและยังไม่ปิด
+                          กดแล้วเปิดกล่องรายละเอียดให้กรอกเหตุผลก่อน ไม่ปิดทันทีจากตาราง
+                          เพราะการปิดใบทั้งที่ของค้างควรต้องบอกเหตุผลไว้เสมอ */}
+                      {!r.completed && r.hasLedger && !r.stockDrained && !r.remainMissing && !r.remainInvalid && <button className="tsf-action-btn lo-close-btn" onClick={() => setCloseTarget(r)} disabled={busy} title={`อนุมัติปิดใบ ${r.currentLicenseNo} ทั้งที่ยังมีของค้าง`}>
+                          อนุมัติปิดใบ
+                        </button>}
+                      {/* ปิดไปแล้วก็ต้องถอยกลับได้ ไม่งั้นกดพลาดครั้งเดียวแก้ไม่ได้ */}
+                      {r.manualClosed && <button className="tsf-action-btn lo-close-btn" onClick={() => reopenRow(r)} disabled={busy || reopening} title={`ยกเลิกการปิดใบ ${r.currentLicenseNo}`}>
+                          ยกเลิกปิดใบ
+                        </button>}
                       <button className="tsf-action-btn" onClick={() => setDetailTarget(r)} disabled={busy}>
                         รายละเอียด
                       </button>
@@ -1239,6 +1696,7 @@ export default function LicenseOverviewPage() {
         </div>}
 
       <LicenseDetailModal target={detailTarget} onClose={() => setDetailTarget(null)} onChanged={load} />
+      <LicenseCloseModal target={closeTarget} onClose={() => setCloseTarget(null)} onDone={load} />
 
       <ClearDataModal open={clearOpen} busy={clearing} onClose={() => !clearing && setClearOpen(false)} onClear={handleClear} />
     </AppShell>;

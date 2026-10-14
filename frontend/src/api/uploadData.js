@@ -2,11 +2,13 @@ import { apiFetch, API_BASE_URL, getToken } from './client.js';
 // ชุดข้อมูลที่เปิดให้อัปโหลดในหน้า "อัพโหลดข้อมูล"
 // (Planning / Daily Plan / WH1 / WH2 / Engine / พาร์ทรายชนิด เลิกอัปโหลดแล้ว)
 export const DATASETS = [{
-  key: 'engine_it_allocation',
-  label: 'Planning WH'
-}, {
   key: 'spec_sheet',
-  label: 'Planning MFG'
+  // \u00A0 = เว้นวรรคไม่ตัดบรรทัด ให้วงเล็บอยู่ด้วยกันตอนชื่อตกบรรทัด
+  label: 'Planning PCP (Spec\u00A0sheet)'
+}, {
+  // เขียนพร้อมกันตอนอัป Planning PCP — ดูได้ แต่ไม่มีในรายการอัปโหลด
+  key: 'pcp_daily_plan',
+  label: 'Planning PCP (Daily\u00A0plan)'
 }, {
   key: 'cw_cv_its',
   label: 'Master Data'

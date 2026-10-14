@@ -110,7 +110,10 @@ export const LICENSE_STATUS_LABEL = {
   EXPIRED: 'หมดอายุแล้ว',
   COMPLETED: 'เสร็จสิ้นแล้ว',
   RENEWED: 'ต่ออายุแล้ว',
-  NO_DATE: 'ไม่มีวันหมดอายุ'
+  NO_DATE: 'ไม่มีวันหมดอายุ',
+  // REMAIN ติดลบ = นำของออกเกินจำนวนที่มีบนใบ ซึ่งเป็นไปไม่ได้จริง
+  // ไม่แสดงจำนวนวัน เพราะการนับวันไม่มีความหมายถ้ายอดบนใบยังเชื่อไม่ได้
+  INVALID: 'ข้อมูลไม่ถูกต้อง'
 };
 export const LICENSE_STATUS_CLASS = {
   VALID: 'il-badge il-badge-ok',
@@ -118,7 +121,8 @@ export const LICENSE_STATUS_CLASS = {
   EXPIRED: 'il-badge il-badge-bad',
   COMPLETED: 'il-badge il-badge-ok',
   RENEWED: 'il-badge il-badge-muted',
-  NO_DATE: 'il-badge il-badge-muted'
+  NO_DATE: 'il-badge il-badge-muted',
+  INVALID: 'il-badge il-badge-bad'
 };
 
 // ป้ายสถานะอายุใบอนุญาตแบบภาษาไทย พร้อมจำนวนวัน
@@ -137,6 +141,8 @@ export function licenseDaysLabel(status, daysLeft) {
       return 'เสร็จสิ้นแล้ว';
     case 'RENEWED':
       return 'ต่ออายุแล้ว';
+    case 'INVALID':
+      return 'ข้อมูลไม่ถูกต้อง';
     default:
       return 'ยังไม่ระบุวันหมดอายุ';
   }
@@ -144,6 +150,8 @@ export function licenseDaysLabel(status, daysLeft) {
 
 // คำอธิบายใต้ป้าย — บอกว่าจำนวนวันนั้นนับจากอะไร
 export function licenseDaysHint(status, daysLeft) {
+  // ใบที่ตัวเลขผิด ไม่ต้องอธิบายเรื่องวัน ให้บอกว่าต้องไปทำอะไรแทน
+  if (status === 'INVALID') return 'REMAIN ติดลบ — ตรวจตัวเลขในทะเบียนก่อน';
   if (typeof daysLeft !== 'number') return '';
   if (status === 'EXPIRED') return `หมดอายุไปแล้ว ${Math.abs(daysLeft)} วัน`;
   if (daysLeft === 0) return 'หมดอายุวันนี้';
@@ -295,6 +303,76 @@ export function setLicenseIssueDate({
       licenseNo,
       issueDate
     })
+  });
+}
+
+// ---------------------------------------------------------------------------
+// อนุมัติปิดใบอนุญาตเอง
+//
+// ระบบปิดใบให้เองได้ทางเดียวคือ REMAIN ลงถึง 0 ส่วนใบที่ของยังค้าง — ship ไปแล้ว
+// แต่ไม่ได้ต่ออายุ — ต้องมีคนกดยืนยัน เพราะคนหน้างานเท่านั้นที่รู้ว่าจบแล้วจริง
+// ---------------------------------------------------------------------------
+
+export function closeLicenseManually({
+  type,
+  licenseNo,
+  note = '',
+  remainAtClose = 0
+}) {
+  return apiFetch('/license-overview/close', {
+    method: 'POST',
+    body: JSON.stringify({
+      type,
+      licenseNo,
+      note,
+      remainAtClose
+    })
+  });
+}
+
+// สืบจาก S/N ของเครื่องหนึ่งเครื่อง ไปถึงใบนำออกรอบล่าสุด
+//
+// ตอบว่าเครื่องนี้อยู่ใต้ใบนำเข้าไหน ใช้ใบนำออกเลขอะไร ออกวันไหน เหลืออีกกี่วัน
+export function traceSerial(sn) {
+  const params = new URLSearchParams({
+    sn
+  });
+  return apiFetch(`/license-overview/serial?${params.toString()}`);
+}
+
+// ค้นหารวม — พิมพ์ S/N หรือเลขใบอนุญาตก็ได้
+//
+// แยกจากรูปทรงไม่ได้ เพราะ S/N 878270000101 กับใบนำเข้า 050167001815
+// เป็นตัวเลข 12 หลักเหมือนกัน จึงให้ backend ลองทีละชั้นแล้วบอกกลับมาว่าเจออะไร
+export function lookupTrace(q) {
+  const params = new URLSearchParams({
+    q
+  });
+  return apiFetch(`/license-overview/lookup?${params.toString()}`);
+}
+
+// รายชื่อเครื่องใต้ใบอนุญาตใบหนึ่ง + ว่าจ่ายไปแล้วหรือยัง
+export function getLicenseSerials({
+  type,
+  licenseNo
+}) {
+  const params = new URLSearchParams({
+    type,
+    licenseNo
+  });
+  return apiFetch(`/license-overview/serials?${params.toString()}`);
+}
+
+export function reopenLicenseManually({
+  type,
+  licenseNo
+}) {
+  const params = new URLSearchParams({
+    type,
+    licenseNo
+  });
+  return apiFetch(`/license-overview/close?${params.toString()}`, {
+    method: 'DELETE'
   });
 }
 

@@ -147,10 +147,10 @@ const TARGET_COLUMNS = {
 // ตัวเลือกใน dropdown "เลือกไฟล์ / งานที่ต้องการตั้งค่า" — มีแค่ 5 รายการนี้
 const SCOPES = [{
   scope: 'engine_it_allocation',
-  label: 'Planning WH'
+  label: 'Planning WH (เลิกอัปโหลดแล้ว)'
 }, {
   scope: 'spec_sheet',
-  label: 'Planning MFG'
+  label: 'Planning PCP'
 }, {
   scope: 'cw_cv_its',
   label: 'Master Data'

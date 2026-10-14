@@ -97,4 +97,13 @@ func (LicenseRenewalHistory) TableName() string { return "license_renewal_histor
 const (
 	LicenseStatusRenewed   = "RENEWED"   // ใบเดิมที่ถูกต่ออายุไปแล้ว (ประวัติ)
 	LicenseStatusCompleted = "COMPLETED" // ปิดงานแล้ว
+
+	// LicenseStatusInvalid = ตัวเลขในทะเบียนขัดแย้งกันเอง ยังเชื่อไม่ได้
+	//
+	// ตอนนี้มีกรณีเดียวคือ REMAIN ติดลบ — นำของออกเกินจำนวนที่มีบนใบ
+	// ซึ่งเป็นไปไม่ได้จริง แปลว่ากรอกผิดที่ไหนสักแห่ง
+	//
+	// ใบแบบนี้ปิดไม่ได้ เพราะถ้าปล่อยให้ปิด เท่ากับระบบรับรองยอดที่ผิดไปด้วย
+	// ต้องให้คนไปแก้ตัวเลขในทะเบียนให้ถูกก่อน
+	LicenseStatusInvalid = "INVALID"
 )

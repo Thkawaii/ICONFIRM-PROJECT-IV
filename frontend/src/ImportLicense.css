@@ -3668,3 +3668,705 @@ td[data-label='สถานะ / จำนวนวัน'] .lo-flag-overdue {
     max-height: none;
   }
 }
+
+/* (เลิกใช้แล้ว — ย้ายไปเป็นกล่องยืนยันแยก .lo-close-modal)
+   กล่องอนุมัติปิดใบอนุญาตในหน้ารายละเอียด
+   ---------------------------------------------------------------------------
+   ใช้โครงเดียวกับ .lo-issue-date เพราะเป็นงานประเภทเดียวกัน — การกรอกข้อมูล
+   ที่ระบบเดาแทนไม่ได้ ต้องให้คนตัดสินใจเอง จึงควรหน้าตาเหมือนกัน */
+.lo-manual-close {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 14px 16px;
+  border: 1px solid #fcd9a4;
+  border-left: 3px solid #d98324;
+  border-radius: 0 10px 10px 0;
+  background: #fffaf2;
+}
+
+.lo-manual-close-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #8a5212;
+}
+
+/* ใบที่ปิดไปแล้ว ไม่ใช่เรื่องต้องเตือน เปลี่ยนเป็นโทนเขียวให้อ่านแล้วรู้ว่าจบแล้ว */
+.lo-manual-close:has(.lo-manual-close-done) {
+  border-color: #b7e4c7;
+  border-left-color: #2f9e5f;
+  background: #f4fbf6;
+}
+
+.lo-manual-close-done {
+  color: #1d6f41;
+}
+
+.lo-manual-close-note {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 8px 11px;
+  border: 1px solid var(--border, #dfe3e8);
+  border-radius: 8px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--text, #16191d);
+}
+
+.lo-manual-close-note:focus {
+  outline: 2px solid var(--brand-500, #12a39b);
+  outline-offset: 1px;
+}
+
+
+/* ปุ่มอนุมัติปิดใบในแถวตาราง
+   ใช้โทนส้มเดียวกับกล่องอนุมัติในหน้ารายละเอียด เพื่อให้รู้ว่าเป็นเรื่องเดียวกัน
+   ไล่ selector ให้ยาวถึงระดับ td เพราะ theme.css โหลดทีหลังไฟล์นี้
+   ถ้าเขียนสั้นแค่ .lo-close-btn กฎสีเขียวของ .tsf-action-btn ในธีมจะชนะ */
+.wh-table tbody td .lo-close-btn {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.wh-table tbody td .lo-close-btn:hover {
+  border-color: #94a3b8;
+  background: #eef2f7;
+  color: #1e293b;
+}
+
+
+/* กล่องยืนยันอนุมัติปิดใบนำออก
+   ---------------------------------------------------------------------------
+   แคบกว่ากล่องรายละเอียด เพราะมีแค่คำถามเดียวให้ตอบ
+   กว้างเกินไปจะทำให้ปุ่มยืนยันอยู่ไกลสายตาจากข้อความเตือน */
+.lo-close-modal {
+  max-width: 460px;
+  padding: 22px 24px;
+}
+
+.lo-close-modal-title {
+  margin: 0 0 10px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text, #16191d);
+}
+
+.lo-close-modal-line {
+  margin: 0 0 10px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 15px;
+}
+
+.lo-close-modal-warn {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-muted, #5b6472);
+}
+
+.lo-close-modal-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted, #5b6472);
+}
+
+.lo-close-modal-hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted, #5b6472);
+}
+
+.lo-close-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+
+/* กล่องยืนยันปิดใบ — จัดใหม่ให้อ่านได้ในแวบเดียว
+   ---------------------------------------------------------------------------
+   ของเดิมเรียงข้อความสี่บรรทัดน้ำหนักใกล้กันหมด ตาไม่รู้ว่าควรอ่านอะไรก่อน
+   ตอนนี้แบ่งเป็นสามชั้นชัดเจน: หัวข้อ → ข้อมูลใบ (ในกรอบ) → ช่องกรอก → ปุ่ม */
+.lo-close-modal {
+  max-width: 420px;
+  padding: 24px 26px 22px;
+}
+
+.lo-close-modal-title {
+  margin: 0 0 16px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #16191d);
+}
+
+/* กรอบข้อมูลใบ — แยกออกจากพื้นหลังเพื่อบอกว่า "นี่คือสิ่งที่กำลังจะปิด" */
+.lo-close-modal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 13px 15px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border, #e4e8ed);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.lo-close-modal-no {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text, #16191d);
+}
+
+.lo-close-modal-remain {
+  font-size: 13px;
+  color: var(--text-muted, #5b6472);
+}
+
+.lo-close-modal-remain strong {
+  color: #b45309;
+  font-weight: 700;
+}
+
+.lo-close-modal-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text, #16191d);
+}
+
+.lo-close-modal-optional {
+  font-weight: 400;
+  color: var(--text-muted, #8a929c);
+}
+
+.lo-close-modal-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border, #dfe3e8);
+  border-radius: 9px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--text, #16191d);
+}
+
+.lo-close-modal-input::placeholder {
+  color: #aab2bd;
+}
+
+.lo-close-modal-input:focus {
+  outline: 2px solid var(--brand-500, #12a39b);
+  outline-offset: 1px;
+}
+
+/* ปุ่มยกเลิกต้องไม่แข่งสายตากับปุ่มยืนยัน — ทำให้เป็นปุ่มพื้นเรียบ */
+.lo-close-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.lo-close-modal-actions .tsf-action-btn {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted, #5b6472);
+}
+
+.lo-close-modal-actions .tsf-action-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: var(--text, #16191d);
+}
+
+
+/* การ์ดผลการค้นหา (S/N และเลขใบอนุญาต)
+   ---------------------------------------------------------------------------
+   ขอบสีรอบทั้งใบ ไม่ใช่แค่ขีดซ้าย — การ์ดนี้เป็นคำตอบของคำถามที่คนเพิ่งพิมพ์ไป
+   ควรแยกตัวออกจากหน้าให้ชัด ขีดซ้ายอย่างเดียวดูเหมือนข้อความเตือนที่แทรกมา
+   สีผูกกับวันคงเหลือ เพราะคนที่ค้นกำลังถามว่า "ใบยังใช้ได้อยู่ไหม" */
+.lo-trace {
+  margin: 0 0 16px;
+  padding: 18px 20px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.lo-trace-ok {
+  border-color: #7fd1c4;
+  background: linear-gradient(#f3fbfa, #fff 70px);
+}
+
+.lo-trace-warn {
+  border-color: #e8bd80;
+  background: linear-gradient(#fffaf2, #fff 70px);
+}
+
+.lo-trace-bad {
+  border-color: #eda3a3;
+  background: linear-gradient(#fdf4f4, #fff 70px);
+}
+
+.lo-trace-muted {
+  border-color: #cbd5e1;
+  background: linear-gradient(#f8fafc, #fff 70px);
+}
+
+.lo-trace-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  margin-bottom: 15px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.lo-trace-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8a929c);
+  margin-bottom: 3px;
+}
+
+.lo-trace-sn {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text, #16191d);
+}
+
+/* จำนวนวันคงเหลือคือตัวเลขที่คนมองหาก่อนอย่างอื่น ให้อยู่มุมขวาและมีพื้นของตัวเอง */
+.lo-trace-days {
+  text-align: right;
+  line-height: 1.35;
+  padding: 4px 13px;
+  border-radius: 10px;
+}
+
+.lo-trace-ok .lo-trace-days { background: #e6f5f2; }
+.lo-trace-warn .lo-trace-days { background: #fdf0dd; }
+.lo-trace-bad .lo-trace-days { background: #fbe9e9; }
+.lo-trace-muted .lo-trace-days { background: #f1f5f9; }
+
+.lo-trace-days-value {
+  display: block;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.lo-trace-ok .lo-trace-days-value { color: #0f8580; }
+.lo-trace-warn .lo-trace-days-value { color: #a55f10; }
+.lo-trace-bad .lo-trace-days-value { color: #b32020; }
+.lo-trace-muted .lo-trace-days-value { color: #5b6472; }
+
+.lo-trace-days-status {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted, #5b6472);
+}
+
+.lo-trace-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 14px 22px;
+  margin: 0;
+}
+
+.lo-trace-cell dt {
+  font-size: 11.5px;
+  color: var(--text-muted, #8a929c);
+  margin-bottom: 2px;
+}
+
+.lo-trace-cell dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text, #16191d);
+  word-break: break-word;
+}
+
+/* ตารางสายประเทศ — ใบนำเข้าใบเดียวแบ่งโควต้าหลายประเทศได้
+   แต่ละสายมีเลขใบนำออกและวันหมดอายุของตัวเอง รวมเป็นบรรทัดเดียวแล้วอ่านไม่ออก */
+.lo-trace-branches {
+  margin-top: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.lo-trace-branch {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) minmax(128px, 1.2fr) minmax(96px, 1fr) minmax(96px, 1fr) 62px 68px;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 13px;
+}
+
+.lo-trace-branch:last-child { border-bottom: none; }
+
+.lo-trace-branch-head {
+  background: #f4f6f8;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted, #5b6472);
+}
+
+.lo-trace-branch-country { font-weight: 600; }
+
+.lo-trace-branch-no {
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 600;
+}
+
+.lo-trace-branch-num {
+  text-align: right;
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+/* สายที่หมดอายุไปแล้วต้องเตะตา เพราะนั่นคือสายที่ต้องรีบต่อ */
+.lo-trace-branch-late {
+  color: #b32020;
+  font-weight: 600;
+}
+
+.lo-trace-conflict {
+  margin-top: 15px;
+  padding: 11px 13px;
+  border-radius: 9px;
+  background: #fff6e9;
+  border: 1px solid #f0d7ac;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #8a5212;
+}
+
+.lo-trace-empty {
+  border-color: #eda3a3;
+  background: #fdf4f4;
+  font-size: 13.5px;
+  color: var(--text, #16191d);
+}
+
+.lo-trace-hint {
+  display: block;
+  margin-top: 5px;
+  font-size: 12.5px;
+  color: var(--text-muted, #5b6472);
+}
+
+@media (max-width: 680px) {
+  .lo-trace-branch {
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 10px;
+  }
+  .lo-trace-branch-head { display: none; }
+  .lo-trace-branch-num { text-align: left; }
+}
+
+/* บรรทัดสรุปเหนือรายชื่อเครื่อง
+   ตัวเลขตัวใหญ่กว่าคำอธิบาย เพราะคนมองหาตัวเลขก่อน แล้วค่อยอ่านว่าคืออะไร */
+.lo-serial-summary {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-bottom: 11px;
+  font-size: 13px;
+  color: var(--text-muted, #5b6472);
+}
+
+.lo-serial-stat b {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text, #16191d);
+}
+
+.lo-serial-issued b { color: #0f8580; }
+.lo-serial-pending b { color: #a55f10; }
+
+/* คำเตือนตอนยอดที่คนกรอกไม่ตรงกับจำนวนเครื่องที่ยังไม่จ่าย */
+.lo-serial-warn {
+  margin: 0 0 11px;
+  padding: 9px 12px;
+  border-left: 3px solid #d98324;
+  border-radius: 0 8px 8px 0;
+  background: #fff6e9;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #8a5212;
+}
+
+/* รายชื่อเครื่องใต้ใบอนุญาต
+   ---------------------------------------------------------------------------
+   ใบหนึ่งคุมเครื่องได้ถึง 135 เครื่อง และ P/N มักซ้ำกันทุกแถว
+   ของเดิมจึงอ่านยาก: แถวสูง ช่องไฟกว้าง ตัวหนังสือน้ำหนักเท่ากันหมด
+   ตาเลยไม่มีจุดเกาะ ต้องกวาดทีละแถวทั้งที่สิ่งที่หาคือแถวที่ "ยังไม่จ่าย"
+
+   แก้โดย: ใส่หัวตาราง · เลขลำดับ · แถวเตี้ยลง · P/N จางลงเพราะซ้ำกันทุกแถว
+   · สถานะเป็นชิปสีแทนข้อความเปล่า · เรียงเครื่องที่ยังไม่จ่ายขึ้นก่อน */
+.lo-serial-search {
+  width: 100%;
+  max-width: 280px;
+  margin-bottom: 9px;
+  padding: 7px 11px;
+  border: 1px solid var(--border, #dfe3e8);
+  border-radius: 8px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text, #16191d);
+}
+
+.lo-serial-search:focus {
+  outline: 2px solid var(--brand-500, #12a39b);
+  outline-offset: 1px;
+}
+
+.lo-serial-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border, #e4e8ed);
+  border-radius: 10px;
+}
+
+.lo-serial-row {
+  display: grid;
+  grid-template-columns: 34px minmax(118px, 1fr) minmax(96px, 0.9fr) minmax(128px, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 6px 13px;
+  border-bottom: 1px solid var(--border, #f1f4f7);
+  font-size: 13px;
+}
+
+.lo-serial-row:last-child { border-bottom: none; }
+
+/* หัวตารางค้างไว้ด้านบนตอนเลื่อน ไม่งั้นพอเลื่อนลงไปแถวที่ 40 จะลืมว่าคอลัมน์ไหนคืออะไร */
+.lo-serial-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f4f6f8;
+  border-bottom: 1px solid var(--border, #e4e8ed);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted, #5b6472);
+}
+
+.lo-serial-idx {
+  font-size: 11.5px;
+  color: var(--text-muted, #aab2bd);
+  text-align: right;
+}
+
+.lo-serial-no {
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text, #16191d);
+}
+
+/* P/N ซ้ำกันทุกแถวในใบเดียว จึงจางที่สุด — มีไว้ยืนยัน ไม่ใช่ไว้อ่าน */
+.lo-serial-meta {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11.5px;
+  color: #aab2bd;
+}
+
+.lo-serial-state {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  text-align: right;
+}
+
+.lo-serial-chip {
+  display: inline-block;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lo-serial-chip.is-wait {
+  background: #fff3e0;
+  color: #a55f10;
+}
+
+.lo-serial-chip.is-done {
+  background: #e8f5ee;
+  color: #1d6f41;
+}
+
+.lo-serial-mc {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--text-muted, #8a929c);
+}
+
+/* เครื่องที่จ่ายแล้วถอยไปอยู่ข้างหลังสายตา เพราะสิ่งที่ต้องตามคือเครื่องที่ยังค้าง */
+.lo-serial-row.is-issued .lo-serial-no {
+  color: var(--text-muted, #7b8694);
+  font-weight: 500;
+}
+
+.lo-serial-empty {
+  grid-column: 1 / -1;
+  padding: 10px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted, #8a929c);
+}
+
+@media (max-width: 560px) {
+  .lo-serial-row {
+    grid-template-columns: 28px 1fr minmax(110px, auto);
+  }
+  .lo-serial-meta { display: none; }
+  .lo-serial-head span:nth-child(3) { display: none; }
+}
+
+/* ช่อง "ดูข้อมูลใบเดียว"
+   ---------------------------------------------------------------------------
+   แยกออกจากช่องกรองตารางด้วยกรอบของตัวเอง ไม่ใช่วางเรียงกันเฉย ๆ
+   เพราะสองช่องหน้าตาเหมือนกันวางติดกันคนจะพิมพ์ผิดช่อง
+   ช่องนี้มีป้ายกำกับและคำอธิบายใต้ช่อง ส่วนช่องกรองไม่มี — ต่างกันพอให้แยกออก */
+.lo-lookup {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border, #e4e8ed);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.lo-lookup-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lo-lookup-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text, #16191d);
+}
+
+.lo-lookup-input {
+  width: 100%;
+  max-width: 420px;
+  padding: 9px 13px;
+  border: 1px solid var(--border, #dfe3e8);
+  border-radius: 9px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--text, #16191d);
+}
+
+.lo-lookup-input::placeholder {
+  color: #aab2bd;
+}
+
+.lo-lookup-input:focus {
+  outline: 2px solid var(--brand-500, #12a39b);
+  outline-offset: 1px;
+}
+
+.lo-lookup-hint {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--text-muted, #8a929c);
+}
+
+.lo-lookup-clear {
+  /* เผื่อที่ให้ป้ายกำกับด้านบนของช่อง ปุ่มจะได้อยู่ระดับเดียวกับช่องกรอก */
+  margin-top: 25px;
+  padding: 8px 14px;
+  border: 1px solid var(--border, #dfe3e8);
+  border-radius: 9px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-muted, #5b6472);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lo-lookup-clear:hover {
+  background: #f1f5f9;
+  color: var(--text, #16191d);
+}
+
+@media (max-width: 640px) {
+  .lo-lookup {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .lo-lookup-clear {
+    margin-top: 0;
+  }
+}
+
+
+/* บันทึกการปิดใบด้วยการอนุมัติ ในหน้ารายละเอียด
+   ---------------------------------------------------------------------------
+   ใช้โทนเขียวเพราะเป็นสถานะที่จบแล้ว ไม่ใช่เรื่องต้องเตือน
+   เหตุผลอยู่บรรทัดล่างสุดและตัวหนาน้อยที่สุด เพราะเป็นข้อความอิสระที่คนพิมพ์เอง
+   ความยาวไม่แน่นอน ถ้าให้เด่นเกินจะดึงสายตาไปจากข้อมูลที่เป็นระบบ */
+.lo-closed-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 14px 0 0;
+  padding: 13px 15px;
+  border: 1px solid #b7e4c7;
+  border-left: 3px solid #2f9e5f;
+  border-radius: 0 10px 10px 0;
+  background: #f4fbf6;
+}
+
+.lo-closed-note-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1d6f41;
+}
+
+.lo-closed-note-meta {
+  font-size: 12.5px;
+  color: #3d7a57;
+}
+
+.lo-closed-note-reason {
+  font-size: 13px;
+  color: var(--text, #16191d);
+  word-break: break-word;
+}

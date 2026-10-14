@@ -13,23 +13,45 @@ import { CloudArrowUpIcon } from '../components/icons.jsx';
 import { ArrowDownTrayIcon, RectangleStackIcon } from '../components/icons.jsx';
 import '../UploadData.css';
 // ชุดข้อมูลที่อัปโหลดได้แล้ว — ตาม flow ใหม่ (ss.xlsx Sheet1)
-//   Planning WH  : แผนจ่าย Engine / IT# รายเครื่อง (MC#) — ชีต Engine_IT allocation
-//   Planning MFG : ผูก MC# เข้ากับ Product Spec — ชีต Spec sheet_pcp
+//   Planning PCP : ชีต Specification sheet + Daily plan ในไฟล์แผนผลิตรายเดือน
+//                  (Specification sheet = สเปกรายเครื่อง · Daily plan = แผนจ่ายรายวัน)
 //   Master Data  : P/N ของ CW / CV / SM / MP / PH / Engine ตาม Product Spec — ชีต CW_CV_ITS
+//
+// Planning WH (Engine_IT allocation) ถอดออกจากรายการอัปโหลดแล้ว
 // ของเดิม (ALL PART, IT Controller, Swing Motor, Pump Assy HYD, Motor Propel,
 // Control Valve, Planning, Daily Plan, WH1, WH2, Engine) ไม่เปิดให้อัปโหลดแล้ว
-const DATASET_TYPES = [{
-  value: 'engine_it_allocation',
-  label: 'Planning WH'
-}, {
+// ชุดข้อมูลที่ "อัปโหลดได้" — ไฟล์ Planning PCP หนึ่งไฟล์เขียนลงสองตาราง
+// จึงมีให้เลือกอัปแค่ตัวเดียว ไม่ใช่สองตัว
+const UPLOAD_TYPE_OPTIONS = [{
   value: 'spec_sheet',
-  label: 'Planning MFG'
+  label: 'Planning PCP'
+}, {
+  value: 'cw_cv_its',
+  label: 'Master Data'
+}];
+
+// ชุดข้อมูลที่ "ดูได้" — มีมากกว่าที่อัปได้
+//
+// pcp_daily_plan ถูกเขียนตอนอัป Planning PCP ไม่ได้อัปแยก แต่ต้องเปิดให้ดู
+// ไม่งั้นแผนจ่ายรายวันจะอยู่ใน DB โดยไม่มีใครเห็น ตรวจไม่ได้ว่าอ่านมาถูกไหม
+// วงเล็บต่อท้ายใช้ \u00A0 (เว้นวรรคไม่ตัดบรรทัด) คั่นข้างใน
+// เพื่อให้ตอนชื่อยาวเกินความกว้าง dropdown มันตัดบรรทัดตรงหน้าวงเล็บ
+//
+//   Planning PCP          ไม่ใช่   Planning PCP (Spec
+//   (Spec sheet)                   sheet)
+//
+// ของเดิมตัดกลางวงเล็บ อ่านแล้วสะดุดเพราะ "sheet)" ลอยอยู่บรรทัดเดียว
+const DATASET_TYPES = [{
+  value: 'spec_sheet',
+  label: 'Planning PCP (Spec\u00A0sheet)'
+}, {
+  value: 'pcp_daily_plan',
+  label: 'Planning PCP (Daily\u00A0plan)'
 }, {
   value: 'cw_cv_its',
   label: 'Master Data'
 }];
 const DEFAULT_DATASET = DATASET_TYPES[0].value;
-const UPLOAD_TYPE_OPTIONS = DATASET_TYPES;
 const TYPE_OPTIONS = DATASET_TYPES;
 const ALL_TYPE_LABELS = Object.fromEntries(DATASET_TYPES.map(t => [t.value, t.label]));
 function typeLabel(value) {
@@ -46,7 +68,7 @@ export default function MasterDataPage() {
   const canEdit = role === 'ADMIN';
   const navItems = canEdit ? ADMIN_NAV_ITEMS : uploadNavItems;
   const shellRoleLabel = canEdit ? 'Admin' : 'Upload';
-  const [uploadType, setUploadType] = useState(DEFAULT_DATASET);
+  const [uploadType, setUploadType] = useState(UPLOAD_TYPE_OPTIONS[0].value);
   const [viewType, setViewType] = useState(DEFAULT_DATASET);
   const [pendingFile, setPendingFile] = useState(null);
   const [uploading, setUploading] = useState(false);

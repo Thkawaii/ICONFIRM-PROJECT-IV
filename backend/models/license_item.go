@@ -27,6 +27,15 @@ const (
 type LicenseItem struct {
 	ID uint `gorm:"primaryKey"`
 
+	// PartNo = คอลัมน์ "PART NO." ในไฟล์บัญชีแสดงหมายเลขเครื่อง เช่น YN22E00849FA
+	//
+	// เป็น P/N ของตัว IT Controller ที่ WH สแกนตอนจ่ายของ ต่างจาก Model (แบบ/รุ่น
+	// เช่น JRN-260K) ซึ่งเป็นชื่อรุ่นเชิงพาณิชย์ ไม่ใช่เลขที่สแกนได้จากกล่อง
+	//
+	// คู่กับ MachineNo (คอลัมน์ "หมายเลขเครื่อง" = S/N เช่น 878270000101)
+	// สองช่องนี้คือสิ่งที่ WH สแกนแล้วระบบเอามาเทียบกับทะเบียนใบนำเข้า
+	PartNo string `gorm:"size:60;index"`
+
 	Brand string `gorm:"size:100"`
 	Model string `gorm:"size:50;index"`
 

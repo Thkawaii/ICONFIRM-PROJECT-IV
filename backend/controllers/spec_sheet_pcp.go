@@ -20,11 +20,12 @@ import (
 // ---------------------------------------------------------------------------
 
 var errNoSpecSheetPCP = errors.New(
-	"ไม่พบข้อมูล Planning MFG ในไฟล์นี้ — ต้องมีหัวตารางที่มี Machine และ Product Spec")
+	"ไม่พบข้อมูล Planning PCP ในไฟล์นี้ — ต้องมีชีต Specification sheet (บล็อกเครื่องละหลายแถว) " +
+		"หรือชีตที่มีหัวตาราง Machine และ Product Spec")
 
 // specPCPColumns: ลำดับคอลัมน์ของตารางที่แปลงเสร็จแล้ว
 var specPCPColumns = []string{
-	"Line", "LOT NO.", "Machine", "Product Spec", "Domestic/Exp", "Selling comp",
+	"LOT NO.", "Machine", "Product Spec", "Domestic/Exp", "Selling comp",
 	"KCM Order", "Brand", "Destination", "Base machine spec.", "Boom", "Arm",
 	"Shoe", "Counter weight", "Front ATT", "Cab", "Cab guard", "IT device", "Note1",
 }
