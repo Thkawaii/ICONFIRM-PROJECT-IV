@@ -4050,15 +4050,34 @@ td[data-label='สถานะ / จำนวนวัน'] .lo-flag-overdue {
   font-weight: 600;
 }
 
+/* ยอดที่คนกรอกไม่ตรงกับที่ระบบนับได้ — ต้องเตะตาทันทีเพราะเป็นสัญญาณว่า
+   ฝั่งใดฝั่งหนึ่งพลาด (คนกรอกผิด หรือสแกนไม่ครบ) ใช้สีแดงแทนสีเหลืองเดิม
+   เพราะสีเหลืองกลืนกับคำเตือนทั่วไปอื่น ๆ ในหน้านี้ จนคนมองข้าม */
 .lo-trace-conflict {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin-top: 15px;
-  padding: 11px 13px;
+  padding: 11px 14px 11px 38px;
   border-radius: 9px;
-  background: #fff6e9;
-  border: 1px solid #f0d7ac;
-  font-size: 12.5px;
+  background: #fdecec;
+  border: 1px solid #f3b7b7;
+  border-left: 4px solid #d32f2f;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.6;
-  color: #8a5212;
+  color: #b42318;
+}
+
+.lo-trace-conflict::before {
+  content: "⚠";
+  position: absolute;
+  left: 13px;
+  top: 10px;
+  font-size: 15px;
+  line-height: 1;
+  color: #d32f2f;
 }
 
 .lo-trace-empty {

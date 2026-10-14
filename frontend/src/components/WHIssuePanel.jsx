@@ -147,6 +147,16 @@ export default function WHIssuePanel() {
     return (machine?.items || []).filter(it => !it.expectedPartNo && it.status !== 'NO_PLAN' && !it.issued);
   }
 
+  // เช็คว่า P/N ที่สแกนมา เคยถูกจ่ายไปแล้วในเครื่องนี้หรือไม่ (เทียบกับ issuedPartNo)
+  // ใช้แยกบัค "ยิงซ้ำของที่เคยบันทึกไปแล้ว" ออกจาก "ยิงของที่ไม่มีอยู่ในเครื่องนี้จริง ๆ"
+  // ของเดิมไม่แยกสองกรณีนี้ จึงขึ้น "ไม่พบรายการที่ตรงกับ P/N..." ทุกครั้งที่ item เป็น null
+  // ทั้งที่จริง ๆ แล้วรายการนี้เคยสแกนผ่านไปแล้วและถูกกรองออกจาก open items (เพราะ it.issued)
+  function alreadyIssuedPartNo(machine, code) {
+    const key = normCode(code);
+    if (!key) return false;
+    return (machine?.items || []).some(it => it.issued && normCode(it.issuedPartNo) === key);
+  }
+
   // เลือก MC# แล้วสแกน Part# — ระบบหาเองว่าเป็นของรายการไหน และต้องสแกน S/N ต่อไหม
   async function runQuickScan(machine) {
     if (!machine?.machineNo || busyRef.current) return;
@@ -187,9 +197,13 @@ export default function WHIssuePanel() {
         }
       }
       if (!item) {
-        await scanErrorAlert(`ไม่พบรายการที่ตรงกับ P/N ${partNo} ในเครื่องนี้`, {
-          hint: 'ตรวจว่ายิงถูกเครื่อง และรายการนี้ยังไม่ถูกจ่ายไปแล้ว'
-        });
+        if (alreadyIssuedPartNo(machine, partNo)) {
+          await scanErrorAlert('รายการนี้เคยบันทึกไปแล้ว');
+        } else {
+          await scanErrorAlert(`ไม่พบรายการที่ตรงกับ P/N ${partNo} ในเครื่องนี้`, {
+            hint: 'ตรวจว่ายิงถูกเครื่อง และรายการนี้ยังไม่ถูกจ่ายไปแล้ว'
+          });
+        }
         return;
       }
       // CW / CV / SM / MP / Pump HYD — master_data มีแต่ Part# จึงเก็บ S/N ว่างไว้
