@@ -494,10 +494,10 @@ export default function WHIssuePanel() {
                     {detailRow.mfgConfirmed ? 'ยืนยันการประกอบแล้ว' : 'รอ MFG ยืนยัน'}
                   </span>
                 </div>
-                {detailRow.mfgSerialNo && <div className="wh-detail-item">
-                    <span className="wh-detail-label">S/N# ที่ MFG สแกน</span>
-                    <span className="wh-detail-value mono">{detailRow.mfgSerialNo}</span>
-                  </div>}
+                {/* ถอดช่องเลขเครื่องฝั่งประกอบออกแล้ว
+                    เป็นเลขตัวเดียวกับช่อง S/N ด้านบนเวลายืนยันผ่าน จึงซ้ำซ้อน
+                    และถ้าสองค่าไม่ตรงกัน ฝั่งประกอบจะยืนยันไม่ผ่านตั้งแต่แรก
+                    บรรทัดสถานะด้านบนจึงบอกได้ครบแล้วว่าตรงหรือไม่ */}
               </div>
             </div>
 

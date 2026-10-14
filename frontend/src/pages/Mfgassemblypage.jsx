@@ -640,7 +640,18 @@ export default function MFGAssemblyPage() {
     if (term) {
       list = list.filter(r => [r.MachineNo, r.Component, flowComponentLabel(r.Component), r.PartNo, r.SerialNo, r.Country, r.CreatedBy].some(v => String(v || '').toLowerCase().includes(term)));
     }
-    return [...list].sort((a, b) => a.ID - b.ID);
+    // เรียงใหม่สุดขึ้นก่อน ให้ตรงกับหน้า WH
+    //
+    // ของเดิมเรียงจากเก่าไปใหม่ (a.ID - b.ID) ของที่เพิ่งสแกนจึงไปต่อท้ายสุด
+    // พอตารางแบ่งหน้าละ 10 รายการ สแกนครบ 100 ครั้งแล้วรายการล่าสุด
+    // จะไปอยู่หน้า 11 คนสแกนเสร็จต้องกดข้ามไปดูว่าบันทึกติดไหม
+    //
+    // หน้า WH เรียง checked_datetime desc อยู่แล้ว สองหน้าจึงเคยเรียงสวนกัน
+    // ทั้งที่เป็นงานต่อเนื่องกัน คนเดียวกันใช้ทั้งสองหน้า
+    //
+    // ใช้ ID ไม่ใช่เวลาที่บันทึก เพราะสแกนรัวในวินาทีเดียวกันได้
+    // แล้วเวลาจะซ้ำจนเรียงไม่คงที่ ส่วน ID เพิ่มทีละหนึ่งเสมอ
+    return [...list].sort((a, b) => b.ID - a.ID);
   }, [rows, search, partFilter, periodMode, periodAnchor]);
 
   // รายการที่มีจริงในตาราง — ไม่ฮาร์ดโค้ด เพิ่ม component ใหม่แล้วขึ้นเอง
