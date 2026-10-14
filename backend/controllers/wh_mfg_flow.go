@@ -133,18 +133,128 @@ func flowComponentIndex(code string) int {
 // อ่านข้อมูลที่ WH อัปโหลดไว้
 // ---------------------------------------------------------------------------
 
-// flowAllocIndex: แผน allocation รายเครื่อง key = เลขเครื่องแบบ normalize
-func flowAllocIndex() map[string]map[string]string {
+// flowPlanningPCPIndex: แผนรายเครื่องจากไฟล์ Planning PCP
+//
+// ไฟล์ Planning WH (Engine_IT allocation) เลิกอัปโหลดแล้ว แหล่งของรายชื่อเครื่อง
+// จึงย้ายมาที่ชีต Specification sheet + Daily plan ในไฟล์แผนผลิตรายเดือนแทน
+//
+// แปลงชื่อคอลัมน์ให้เหมือนของเดิมตรงนี้เลย เพื่อให้ทุกอย่างที่อ่าน allocRow อยู่แล้ว
+// (buildFlowMachine, ประวัติการจ่าย, ฯลฯ) ใช้ต่อได้โดยไม่ต้องแก้
+//
+//	Machine      → Machine S/N
+//	LOT NO.      → Lot no.
+//	Country Name → Customer name
+//	Main line    → Main line (ชื่อเดียวกัน)
+//
+// ไม่มี P/N + S/N ของ IT Controller ในนี้ — ของสองตัวนั้นย้ายไปเทียบกับทะเบียน
+// ใบอนุญาตนำเข้าแทน จึงไม่ได้ใส่ไว้
+func flowPlanningPCPIndex() map[string]map[string]string {
 	out := map[string]map[string]string{}
+	plan := dailyPlanIndex()
+
+	for _, row := range loadUploadRows(models.DatasetSpecSheet) {
+		mc := pickField(row, "Machine", extraColumnPrefix+"Machine")
+		key := NormalizeCodeValue(mc)
+		if key == "" {
+			continue
+		}
+		if _, ok := out[key]; ok {
+			continue
+		}
+
+		// วันจ่ายและประเทศ: ชีต Daily plan ชนะเสมอ
+		//
+		// ชีตที่ชื่อว่า Daily plan คือแหล่งความจริงของแผนจ่าย คนแก้แผนจะไปแก้ที่นั่น
+		// ส่วน Specification sheet เป็นสเปกเครื่องซึ่งไม่ค่อยขยับ ถ้าให้ของนิ่งชนะ
+		// WH จะเห็นวันเดิมทั้งที่แผนเลื่อนไปแล้ว
+		//
+		// Specification sheet เป็นตัวสำรองเฉพาะเครื่องที่ไม่มีในแผน
+		country := pickField(row, "Country Name", extraColumnPrefix+"Country Name")
+		mainLine := pickField(row, "Main line", extraColumnPrefix+"Main line")
+		standBy := pickField(row, "Stand by shipping", extraColumnPrefix+"Stand by shipping")
+		planConflict := ""
+
+		if p, ok := plan[key]; ok {
+			pCountry := pickField(p, "Country Name", extraColumnPrefix+"Country Name")
+			pMain := pickField(p, "Main line", extraColumnPrefix+"Main line")
+			pStandBy := pickField(p, "Stand by shipping", extraColumnPrefix+"Stand by shipping")
+
+			// สองชีตบอกไม่ตรงกัน = คนแก้แผนไม่ครบ ต้องให้เห็น ไม่ใช่เลือกข้างเงียบ ๆ
+			if pMain != "" && mainLine != "" && !sameDateText(pMain, mainLine) {
+				planConflict = "วันจ่ายในชีต Daily plan (" + pMain +
+					") ไม่ตรงกับชีต Specification sheet (" + mainLine + ")"
+			} else if pCountry != "" && country != "" && !sameCountryName(pCountry, country) {
+				planConflict = "ประเทศในชีต Daily plan (" + pCountry +
+					") ไม่ตรงกับชีต Specification sheet (" + country + ")"
+			}
+
+			if pCountry != "" {
+				country = pCountry
+			}
+			if pMain != "" {
+				mainLine = pMain
+			}
+			if pStandBy != "" {
+				standBy = pStandBy
+			}
+		}
+
+		out[key] = map[string]string{
+			"Machine S/N":       mc,
+			"Lot no.":           pickField(row, "LOT NO.", extraColumnPrefix+"LOT NO."),
+			"Customer name":     country,
+			"Main line":         mainLine,
+			"Stand by shipping": standBy,
+			"Product Spec":      pickField(row, "Product Spec", extraColumnPrefix+"Product Spec"),
+			"IT device":         pickField(row, "IT device", extraColumnPrefix+"IT device"),
+			"Plan conflict":     planConflict,
+		}
+	}
+
+	// เครื่องที่อยู่ในแผนจ่ายแต่ไม่มีในชีตสเปก — เดิมหายไปเงียบ ๆ
+	// ต้องโชว์ไว้ ไม่งั้นของที่ต้องจ่ายวันนี้จะไม่ขึ้นในรายการโดยไม่มีใครรู้
+	for key, p := range plan {
+		if _, ok := out[key]; ok {
+			continue
+		}
+		out[key] = map[string]string{
+			"Machine S/N":       pickField(p, "Machine", extraColumnPrefix+"Machine"),
+			"Lot no.":           pickField(p, "LOT NO.", extraColumnPrefix+"LOT NO."),
+			"Customer name":     pickField(p, "Country Name", extraColumnPrefix+"Country Name"),
+			"Main line":         pickField(p, "Main line", extraColumnPrefix+"Main line"),
+			"Stand by shipping": pickField(p, "Stand by shipping", extraColumnPrefix+"Stand by shipping"),
+			"Plan conflict":     "เครื่องนี้อยู่ในชีต Daily plan แต่ไม่มีในชีต Specification sheet",
+		}
+	}
+	return out
+}
+
+// sameDateText: ข้อความวันที่สองค่านี้หมายถึงวันเดียวกันหรือไม่
+//
+// ไฟล์เขียนวันได้หลายแบบ (25-Sep-26 · 2026-09-25) เทียบเป็นวันจริง ไม่ใช่เทียบตัวอักษร
+// ถ้าอ่านไม่ออกสักค่า ให้ถือว่าตรงกัน — ดีกว่าขึ้นเตือนผิดจนคนเลิกสนใจคำเตือน
+func sameDateText(a, b string) bool {
+	da, db := parseLicenseDate(a), parseLicenseDate(b)
+	if da == nil || db == nil {
+		return true
+	}
+	return da.Truncate(24 * time.Hour).Equal(db.Truncate(24 * time.Hour))
+}
+
+// flowAllocIndex: แผนรายเครื่อง key = เลขเครื่องแบบ normalize
+//
+// รวมสองแหล่ง: Planning PCP (แหล่งหลักตอนนี้) และ Planning WH ที่อัปไว้แต่เดิม
+// ของเดิมชนะเมื่อเครื่องเดียวกันมีทั้งสองแหล่ง เพราะมี P/N + S/N รายเครื่องครบกว่า
+// ทำให้เครื่องที่ค้างอยู่ในสายการผลิตเดินงานต่อจนจบได้ ไม่สะดุดตอนเปลี่ยนไฟล์
+func flowAllocIndex() map[string]map[string]string {
+	out := flowPlanningPCPIndex()
 	for _, row := range loadUploadRows(models.DatasetEngineITAlloc) {
 		mc := pickField(row, "Machine S/N", extraColumnPrefix+"Machine S/N")
 		key := NormalizeCodeValue(mc)
 		if key == "" {
 			continue
 		}
-		if _, ok := out[key]; !ok {
-			out[key] = row
-		}
+		out[key] = row
 	}
 	return out
 }
@@ -276,6 +386,13 @@ type FlowMachine struct {
 	LotNo     string `json:"lotNo"`
 	Customer  string `json:"customer"`
 	MainLine  string `json:"mainLine"`
+
+	// PlanDate = วันที่จ่ายตามแผน Daily plan (ข้อความดิบจากไฟล์)
+	PlanDate string `json:"planDate"`
+
+	// PlanConflict = สองชีตในไฟล์ Planning PCP บอกไม่ตรงกัน
+	// ว่าง = ไม่มีปัญหา · ไม่บล็อกการจ่ายของ แค่เตือนว่าคนแก้แผนไม่ครบ
+	PlanConflict string `json:"planConflict"`
 	SpecCode  string `json:"specCode"`
 	// ITDevice = ชนิด IT ของเครื่อง (จาก Planning MFG) เช่น IT(Satellite, iridium)
 	ITDevice string `json:"itDevice"`
@@ -360,6 +477,8 @@ func buildFlowMachineWith(machineNo string, alloc map[string]map[string]string,
 		MachineNo:      machineNo,
 		LotNo:          pickField(allocRow, "Lot no."),
 		Customer:       pickField(allocRow, "Customer name"),
+		PlanDate:       pickField(allocRow, "Main line"),
+		PlanConflict:   pickField(allocRow, "Plan conflict"),
 		MainLine:       pickField(allocRow, "Main line"),
 		SpecCode:       specCode,
 		ITDevice:       lookupITDevice(machineNo),
@@ -419,11 +538,27 @@ func buildFlowMachineWith(machineNo string, alloc map[string]map[string]string,
 			}
 		}
 
+		// IT Controller ไม่มี P/N + S/N กำหนดไว้ล่วงหน้าแล้ว
+		//
+		// ไฟล์ Planning WH ที่เคยระบุว่าเครื่องคันไหนใช้กล่องไหนเลิกใช้แล้ว
+		// WH หยิบกล่องไหนก็ได้ที่ขออนุญาตส่งไปประเทศเดียวกับเครื่องคันนั้น
+		// ความถูกต้องไปตรวจตอนสแกนแทน โดยเทียบกับทะเบียนใบนำเข้า
+		// (ดู checkScanAgainstLicense) จึงต้องไม่ถูกตีเป็น "ยังไม่มีแผน"
+		itcOpen := spec.Code == ComponentITC && item.ExpectedPartNo == "" && item.ExpectedSerialNo == ""
+
 		switch {
+		case itcOpen:
+			if item.Issued {
+				item.Status = FlowStatusIssued
+				item.Message = "WH จ่ายแล้ว"
+			} else {
+				item.Status = FlowStatusPending
+				item.Message = "สแกน P/N และ S/N ของกล่อง — ระบบจะเทียบกับทะเบียนใบนำเข้าให้"
+			}
 		case item.ExpectedPartNo == "" && item.ExpectedSerialNo == "":
 			item.Status = FlowStatusNoPlan
 			if spec.Source == FlowSourceAllocation {
-				item.Message = "ยังไม่มีแผนจ่าย " + item.Label + " ของเครื่องนี้ในไฟล์ Planning WH"
+				item.Message = "ยังไม่มีแผนจ่าย " + item.Label + " ของเครื่องนี้ในไฟล์ Planning PCP"
 			} else if strings.TrimSpace(itemSpecCode) == "" {
 				item.Message = "ยังไม่รู้ Product Spec ของเครื่องนี้ — " + item.Label +
 					" ต้องอ่าน Product Spec จาก Kanban แล้วเทียบกับ master_data"
@@ -465,12 +600,45 @@ func orDash(v string) string {
 // API — ฝั่ง WH
 // ---------------------------------------------------------------------------
 
+// flowPlanDate: วันที่จ่ายของแถวนี้ ตัดเวลาทิ้งให้เหลือแค่วัน
+//
+// ไฟล์เขียนวันที่ได้หลายแบบ (25-Sep-26 · 2026-09-25 · 25/09/2026)
+// ใช้ parseLicenseDate ตัวเดียวกับที่ระบบใช้อ่านวันที่จากไฟล์อยู่แล้ว
+func flowPlanDate(allocRow map[string]string) *time.Time {
+	raw := strings.TrimSpace(pickField(allocRow, "Main line"))
+	if raw == "" {
+		return nil
+	}
+	return parseLicenseDate(raw)
+}
+
 // GetFlowMachines: GET /wh-flow/machines — รายชื่อ MC# ให้ WH เลือก
+//
+// ค่าปริยายคือ "เฉพาะเครื่องที่ต้องจ่ายวันนี้" ตามวันที่ Main line ในแผน Daily plan
+//
+// แผนหนึ่งเดือนมีเครื่องเป็นร้อย ถ้าโชว์หมดทุกวัน คนหน้างานต้องไล่หาเองว่าอันไหน
+// ของวันนี้ ซึ่งเป็นจุดที่หยิบผิดเครื่องได้ง่าย วันนี้มี 11 เครื่องก็ควรเห็น 11 รายการ
+//
+//	date=YYYY-MM-DD  ดูของวันอื่น (เช่นจ่ายล่วงหน้า หรือตามเก็บของเมื่อวาน)
+//	date=all         ดูทั้งหมด ไม่กรองวัน
 func GetFlowMachines(c *gin.Context) {
 	alloc := flowAllocIndex()
 	specs := flowSpecIndex()
 
 	kw := strings.ToUpper(strings.TrimSpace(c.Query("keyword")))
+
+	// กรองตามวันจ่าย
+	dateQ := strings.ToLower(strings.TrimSpace(c.Query("date")))
+	var wantDay *time.Time
+	if dateQ != "all" {
+		if dateQ == "" {
+			t := time.Now().Truncate(24 * time.Hour)
+			wantDay = &t
+		} else if d := parseLicenseDate(dateQ); d != nil {
+			t := d.Truncate(24 * time.Hour)
+			wantDay = &t
+		}
+	}
 
 	machines := make([]string, 0, len(alloc))
 	for _, row := range alloc {
@@ -481,7 +649,17 @@ func GetFlowMachines(c *gin.Context) {
 	sort.Strings(machines)
 
 	out := make([]FlowMachine, 0, len(machines))
+	skippedByDate := 0
 	for _, mc := range machines {
+		if wantDay != nil {
+			d := flowPlanDate(flowAllocFor(alloc, mc))
+			// เครื่องที่ไม่มีวันจ่ายในแผน ยังโชว์ไว้เสมอ — ไม่ใช่ความผิดของคนหน้างาน
+			// ที่ไฟล์กรอกไม่ครบ ถ้าซ่อนไป ของจะค้างโดยไม่มีใครเห็น
+			if d != nil && !d.Truncate(24*time.Hour).Equal(*wantDay) {
+				skippedByDate++
+				continue
+			}
+		}
 		m := buildFlowMachine(mc, alloc, specs, "")
 		if kw != "" &&
 			!strings.Contains(strings.ToUpper(m.MachineNo), kw) &&
@@ -495,7 +673,12 @@ func GetFlowMachines(c *gin.Context) {
 		out = append(out, m)
 	}
 
-	c.JSON(200, gin.H{"rows": out, "total": len(out)})
+	resp := gin.H{"rows": out, "total": len(out)}
+	if wantDay != nil {
+		resp["planDate"] = wantDay.Format("2006-01-02")
+		resp["hiddenByDate"] = skippedByDate
+	}
+	c.JSON(200, resp)
 }
 
 // GetFlowMachine: GET /wh-flow/machines/:machineNo — แผนของเครื่อง 1 เครื่อง
@@ -508,7 +691,7 @@ func GetFlowMachine(c *gin.Context) {
 	alloc := flowAllocIndex()
 	if flowAllocFor(alloc, machineNo) == nil {
 		c.JSON(404, gin.H{
-			"message": "ไม่พบเครื่อง " + strings.ToUpper(machineNo) + " ในไฟล์ Planning WH",
+			"message": "ไม่พบเครื่อง " + strings.ToUpper(machineNo) + " ในไฟล์ Planning PCP",
 		})
 		return
 	}
@@ -701,6 +884,26 @@ func IssueFlowPart(c *gin.Context) {
 		return
 	}
 
+	// IT Controller ต้องสแกนทั้ง P/N และ S/N เสมอ แม้แผนจะไม่ได้กำหนดค่าไว้
+	//
+	// ค่าที่ถูกต้องมาจากทะเบียนใบนำเข้า ไม่ใช่จากแผน ถ้าไม่สแกนมาทั้งคู่
+	// ก็ไม่มีอะไรให้เทียบ และของจะถูกจ่ายออกไปโดยไม่มีใครตรวจว่าตรงใบอนุญาตไหม
+	if component == ComponentITC {
+		if scannedPN == "" || scannedSN == "" {
+			LogInvalidData(c, InvalidData{
+				SourceTable: "WH_FLOW_ISSUE",
+				Action:      "issue_invalid",
+				MachineNo:   machineNo,
+				Component:   component,
+				Field:       "P/N + S/N#",
+				WrongValue:  firstNonEmpty(scannedPN, scannedSN),
+				Reason:      label + " ต้องสแกนทั้ง P/N และ S/N เพื่อเทียบกับทะเบียนใบนำเข้า",
+			})
+			c.JSON(400, gin.H{"message": label + " ต้องสแกนทั้ง P/N และ S/N"})
+			return
+		}
+	}
+
 	// ต้องสแกนอะไรบ้าง ดูจากแผนที่ WH อัปโหลด ไม่ได้ตายตัวตามชนิดของ
 	if item.ExpectedPartNo != "" && scannedPN == "" {
 
@@ -761,6 +964,21 @@ func IssueFlowPart(c *gin.Context) {
 		msg := expectedFrom + " กำหนด S/N# " + item.ExpectedSerialNo + " แต่สแกนได้ " + scannedSN
 		problems = append(problems, msg)
 		wrongs = append(wrongs, wrongField{"S/N#", scannedSN, item.ExpectedSerialNo, msg})
+	}
+
+	// เทียบกับทะเบียนใบอนุญาตนำเข้า — เฉพาะของที่สแกน S/N รายกล่อง (IT Controller)
+	//
+	// แผน Planning PCP ไม่ได้ระบุว่าเครื่องคันไหนต้องใช้กล่องไหน (ไฟล์ Planning WH
+	// ที่เคยระบุไว้เลิกใช้แล้ว) ความถูกต้องจึงมาจากทะเบียนใบนำเข้าแทน:
+	// กล่องที่สแกนต้องมีอยู่จริงในทะเบียน และต้องอนุญาตให้ส่งไปประเทศเดียวกับแผน
+	var licenseItem *models.LicenseItem
+	if component == ComponentITC && scannedSN != "" {
+		chk := checkScanAgainstLicense(scannedPN, scannedSN, machine.Customer)
+		licenseItem = chk.Item
+		if chk.Problem != "" {
+			problems = append(problems, chk.Problem)
+			wrongs = append(wrongs, wrongField{chk.Field, chk.Scanned, chk.Expected, chk.Problem})
+		}
 	}
 
 	if len(problems) > 0 {
@@ -824,6 +1042,18 @@ func IssueFlowPart(c *gin.Context) {
 		CheckedBy:       name,
 		CheckedDatetime: now,
 		UserID:          userID,
+	}
+
+	// ผูกการจ่ายของเข้ากับแถวในทะเบียนใบนำเข้า
+	//
+	// ไม่ผูกไว้ก็นับยอดได้ด้วยการ join ผ่าน S/N แต่จะเปราะ เพราะถ้าภายหลัง
+	// มีการแก้หมายเลขเครื่องในไฟล์ ความเชื่อมโยงจะขาดโดยไม่มีร่องรอย
+	// เก็บเลขใบนำเข้าไว้ตรงนี้เลย ยอดที่นับได้จึงตรวจย้อนหลังได้ว่ามาจากแถวไหน
+	if licenseItem != nil {
+		check.LicenseNo = licenseItem.LicenseNo
+		check.InvoiceNo = licenseItem.InvoiceNo
+		id := licenseItem.ID
+		check.ImportLicenseItemID = &id
 	}
 
 	// จ่ายซ้ำชิ้นเดิมของเครื่องเดิม → อัปเดตรายการเดิมแทนการสร้างใหม่

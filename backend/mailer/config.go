@@ -350,8 +350,14 @@ func LoadWeeklyConfig() WeeklyConfig {
 		Hour:             hour,
 		Minute:           minute,
 		Location:         loc,
-		ImportWithinDays: envInt("WEEKLY_ALERT_IMPORT_WITHIN_DAYS", 30),
-		ExportWithinDays: envInt("WEEKLY_ALERT_EXPORT_WITHIN_DAYS", 7),
+		// แจ้งเตือนก่อนหมดอายุ 15 วัน ทั้งใบนำเข้าและใบนำออก
+		//
+		// เดิมใบนำเข้า 30 วัน ใบนำออก 7 วัน ซึ่งคนละเกณฑ์กันโดยไม่มีเหตุผลชัด
+		// หน้างานต้องการเกณฑ์เดียว 15 วัน — ยาวพอให้ยื่นต่ออายุทัน
+		// (ยื่นเมล → จ่ายเงิน → รับเอกสาร ใช้เวลาราวหนึ่งถึงสองสัปดาห์)
+		// และสั้นพอที่จะไม่เตือนล่วงหน้าจนคนชินแล้วเลิกอ่าน
+		ImportWithinDays: envInt("WEEKLY_ALERT_IMPORT_WITHIN_DAYS", 15),
+		ExportWithinDays: envInt("WEEKLY_ALERT_EXPORT_WITHIN_DAYS", 15),
 		SendWhenEmpty:    envBool("WEEKLY_ALERT_SEND_WHEN_EMPTY", true),
 		CatchUp:          envBool("WEEKLY_ALERT_CATCH_UP", true),
 		SendOnStart:      envBool("WEEKLY_ALERT_SEND_ON_START", true),

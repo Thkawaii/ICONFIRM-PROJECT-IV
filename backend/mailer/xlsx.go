@@ -10,9 +10,13 @@ import (
 // ชุดสีของไฟล์แนบ — ต้องตรงกับไฟล์ที่หน้าเว็บสร้าง (frontend/src/lib/xlsx.js)
 // ผู้ใช้เปิดสองไฟล์นี้คู่กัน ถ้าสีไม่ตรงจะดูเหมือนมาจากคนละระบบ
 const (
-	xlHeaderFill  = "FF00CEC8"
-	xlBandFill    = "FFEAFCFB"
-	xlBorder      = "FFD7E1E8"
+	// ไฟล์แนบในเมลใช้ขาวดำเหมือนไฟล์ที่ดาวน์โหลดจากหน้าเว็บ
+	//
+	// เมลฉบับนี้ถูกพิมพ์ออกมาและเวียนเป็นเอกสาร สีเขียวทำให้พิมพ์ขาวดำแล้วอ่านยาก
+	// เหลือสีไว้ที่เดียวคือแถวหมดอายุ ถ้าทาสีทุกอย่างสีแดงจะไม่มีความหมาย
+	xlHeaderFill  = "FFF2F2F2"
+	xlBandFill    = "FFFAFAFA"
+	xlBorder      = "FFBFBFBF"
 	xlExpiredFill = "FFFFC7CE"
 	xlExpiredFont = "FF9C0006"
 	xlFontName    = "Tahoma"
@@ -280,7 +284,7 @@ func xlStyles() string {
 
 		`<fonts count="3">` +
 		`<font><sz val="11"/><name val="` + xlFontName + `"/></font>` +
-		`<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="` + xlFontName + `"/></font>` +
+		`<font><b/><sz val="11"/><color rgb="FF000000"/><name val="` + xlFontName + `"/></font>` +
 		`<font><sz val="11"/><color rgb="` + xlExpiredFont + `"/><name val="` + xlFontName + `"/></font>` +
 		`</fonts>` +
 

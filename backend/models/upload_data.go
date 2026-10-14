@@ -17,14 +17,32 @@ const (
 	// DatasetCWCVITS: ชีต "CW_CV_ITS" — P/N ของ CW / CV / SM / MP / PH / Engine ตาม Product Spec
 	DatasetCWCVITS = "cw_cv_its"
 
-	// DatasetSpecSheet: ชีต "Spec sheet_pcp" — ผูก MC# เข้ากับ Product Spec (spec code)
+	// DatasetSpecSheet: ชีต "Specification sheet" ในไฟล์แผนผลิตรายเดือน (Planning PCP)
+	// — สเปกรายเครื่อง ผูก MC# เข้ากับ Product Spec (spec code)
+	// ไฟล์รูปแบบเดิมที่มีชีตชื่อ "Spec sheet_pcp" ก็ยังอ่านได้
 	DatasetSpecSheet = "spec_sheet"
+
+	// DatasetPCPDailyPlan: ชีต "Daily plan" ในไฟล์แผนผลิตรายเดือนไฟล์เดียวกัน
+	//
+	// แยกตารางจาก DatasetSpecSheet เพราะสองชีตนี้เปลี่ยนคนละจังหวะ — สเปกเครื่องนิ่ง
+	// แต่แผนจ่ายถูกแก้บ่อย (ดูคำว่า Draft.00 ในชื่อไฟล์) ถ้าเก็บรวมตารางเดียว
+	// อัปแผนรอบใหม่ทีจะทับสเปกไปด้วย
+	//
+	// และที่สำคัญกว่า: แยกแล้วจึงรู้ได้ว่าสองชีต "ไม่ตรงกัน" ซึ่งเป็นสัญญาณว่าคนแก้ไม่ครบ
+	// ถ้ารวมกัน ระบบจะเลือกค่าหนึ่งแล้วจบ ความขัดแย้งหายไปโดยไม่มีใครรู้
+	//
+	// ไม่อยู่ใน UploadableDatasets เพราะไม่ได้อัปแยก — เขียนพร้อมกันตอนอัป Planning PCP
+	DatasetPCPDailyPlan = "pcp_daily_plan"
 )
 
 // UploadableDatasets: ชุดข้อมูลที่ยังเปิดให้อัปโหลดในหน้า "อัพโหลดข้อมูล"
 // ชุดอื่น (Planning / Daily Plan / WH1 / WH2 / Engine) ยังอ่านได้ แต่ไม่ให้อัปโหลดใหม่แล้ว
+//
+// Planning WH (Engine_IT allocation) ถูกถอดออกจากรายการนี้แล้ว
+// P/N + S/N ของ IT Controller ไม่ได้มาจากไฟล์นั้นอีกต่อไป — ย้ายไปเทียบกับ
+// ทะเบียนใบอนุญาตนำเข้าแทน (ดู wh_mfg_flow.go) ข้อมูลเก่าที่อัปไว้แล้วยังอ่านได้
+// เพื่อให้เครื่องที่ค้างอยู่ในสายการผลิตเดินงานต่อจนจบได้
 var UploadableDatasets = []string{
-	DatasetEngineITAlloc,
 	DatasetSpecSheet,
 	DatasetCWCVITS,
 }

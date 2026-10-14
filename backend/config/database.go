@@ -62,6 +62,7 @@ func ConnectDB() {
 
 		&models.LicenseRenewal{},
 		&models.LicenseRenewalHistory{},
+		&models.LicenseManualClose{},
 
 		&models.UploadDataRow{},
 

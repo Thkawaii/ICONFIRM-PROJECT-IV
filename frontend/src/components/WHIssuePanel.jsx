@@ -183,10 +183,13 @@ export default function WHIssuePanel() {
     if (okMsg) scanSuccessToast(okMsg);
   }
 
-  // จ่ายครบทุกรายการแล้ว → ขึ้นไอคอนติ๊กถูกท้ายเลขเครื่องใน dropdown
+  // ตัวเลือกเป็น "MC#, ประเทศ" เพราะเลขเครื่องอย่างเดียวแยกไม่ออกว่าคันไหนไปไหน
+  // ประเทศคือสิ่งที่ระบบจะเอาไปเทียบกับใบอนุญาตนำออก คนหน้างานจึงควรเห็นตั้งแต่ตอนเลือก
+  //
+  // จ่ายครบทุกรายการแล้ว → ขึ้นไอคอนติ๊กถูกท้ายเลขเครื่อง
   const machineOptions = useMemo(() => machines.map(m => ({
     value: m.machineNo,
-    label: m.machineNo,
+    label: m.customer ? `${m.machineNo}, ${m.customer}` : m.machineNo,
     suffix: m.total > 0 && m.issued >= m.total ? <CheckCircleIcon className="size-4 wh-mc-complete" /> : undefined
   })), [machines]);
   const filtered = useMemo(() => {
@@ -236,8 +239,14 @@ export default function WHIssuePanel() {
         <label className="upload-panel-label" htmlFor="wh-machine-select">
           Machine (MC#)
         </label>
-        <SelectField id="wh-machine-select" searchable searchPlaceholder="พิมพ์เลขเครื่องเพื่อค้นหา..." value={selected?.machineNo || ''} disabled={loading || detailLoading || machineOptions.length === 0} placeholder={machineOptions.length === 0 ? 'ยังไม่มีข้อมูลเครื่อง' : '— เลือก MC# —'} options={machineOptions} onChange={v => v && openMachine(v, true)} />
+        <SelectField id="wh-machine-select" searchable searchPlaceholder="พิมพ์เลขเครื่องเพื่อค้นหา..." value={selected?.machineNo || ''} disabled={loading || detailLoading || machineOptions.length === 0} placeholder={machineOptions.length === 0 ? 'วันนี้ไม่มีเครื่องต้องจ่าย' : '— เลือก MC# —'} options={machineOptions} onChange={v => v && openMachine(v, true)} />
       </div>
+
+      {/* สองชีตในไฟล์แผนบอกไม่ตรงกัน — ไม่บล็อกการจ่ายของ แต่ต้องให้เห็น
+          เพราะแปลว่าคนแก้แผนไม่ครบ ซึ่งจบลงที่จ่ายของผิดวันหรือผิดประเทศ */}
+      {selected?.planConflict && <div className="wh-plan-conflict">
+          {selected.planConflict}
+        </div>}
 
       <div className="wh-heading-row" style={{
       marginTop: 28

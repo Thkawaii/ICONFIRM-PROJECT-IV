@@ -21,13 +21,15 @@ func BuildWeeklyReport(w mailer.WeeklyConfig, now time.Time) mailer.WeeklyReport
 	now = now.In(loc)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 
+	// ค่าสำรองเมื่อตั้งค่าไว้ไม่ถูกต้อง — ใช้ 15 วันเท่ากับค่าเริ่มต้นใน config
+	// ถ้าปล่อยเป็นคนละเลขกับ config เวลามีคนตั้ง .env ผิดจะได้พฤติกรรมที่อธิบายไม่ได้
 	importWithin := w.ImportWithinDays
 	if importWithin <= 0 {
-		importWithin = 30
+		importWithin = 15
 	}
 	exportWithin := w.ExportWithinDays
 	if exportWithin <= 0 {
-		exportWithin = 7
+		exportWithin = 15
 	}
 
 	weekStart, weekEnd := mailer.WeekBounds(now)

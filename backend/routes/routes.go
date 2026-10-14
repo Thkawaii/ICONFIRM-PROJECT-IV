@@ -157,6 +157,17 @@ func SetupRoutes(r *gin.Engine) {
 		licenseOverview.DELETE("/all", controllers.ClearLicenseOverview)
 		// กรอกวันที่ออกใบอนุญาตเอง สำหรับไฟล์ที่ไม่มีคอลัมน์วันที่
 		licenseOverview.PATCH("/issue-date", controllers.SetLicenseIssueDate)
+		// อนุมัติปิดใบที่ของยังค้าง (REMAIN ไม่เป็น 0) — ระบบไม่ปิดให้เอง
+		// สืบจาก S/N ไปถึงใบนำออกรอบล่าสุด + วันที่เหลือ
+		// ค้นหารวม — พิมพ์ S/N หรือเลขใบอนุญาตก็ได้ ระบบแยกให้เอง
+		licenseOverview.GET("/lookup", controllers.LookupTrace)
+		licenseOverview.GET("/serial", controllers.TraceSerial)
+		// รายชื่อเครื่องใต้ใบอนุญาตใบหนึ่ง + เหลือเครื่องไหนที่ยังไม่ได้จ่าย
+		licenseOverview.GET("/serials", controllers.GetLicenseSerials)
+		// ยอดนำเข้า vs ยอดที่ WH จ่ายออกจริง แยกตามใบนำเข้า
+		licenseOverview.GET("/serial-summary", controllers.GetSerialStatusSummary)
+		licenseOverview.POST("/close", controllers.CloseLicenseManually)
+		licenseOverview.DELETE("/close", controllers.ReopenLicenseManually)
 	}
 
 	auth.POST("/uploads", controllers.UploadPhoto)

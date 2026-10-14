@@ -312,11 +312,26 @@ var udDatasets = map[string]udDataset{
 
 	// Planning MFG (ชีต Spec sheet_pcp) — ผูก MC# เข้ากับ Product Spec
 	// ใช้ตอน WH จ่าย CW / CV / SM / MP / PH เพราะ P/N ผูกกับ spec code ไม่ใช่เลขเครื่อง
+	// ชีต Daily plan — เขียนพร้อมกันตอนอัปไฟล์ Planning PCP ไม่ได้อัปแยก
+	models.DatasetPCPDailyPlan: {
+		MinHits: 2,
+		Anchors: []string{"machine", "mainline"},
+		Columns: []udColumn{
+			col("LOT NO.", "lotno", "lot"),
+			col("Machine", "machineno", "mcno"),
+			col("Country Name", "countryname", "customer", "customername", "country"),
+			col("Q'ty", "qty", "quantity"),
+			col("Main line", "mainline"),
+			col("Stand by shipping", "standbyshipping", "standby"),
+		},
+	},
+
 	models.DatasetSpecSheet: {
 		MinHits: 3,
 		Anchors: []string{"machine", "productspec", "lotno"},
 		Columns: []udColumn{
-			col("Line"),
+			// ไม่มีคอลัมน์ Line แล้ว — มันเก็บแค่ลำดับแถว ซึ่งตารางขึ้นให้อยู่แล้ว
+			// ในช่อง # ตัวเลขสองช่องเหมือนกันเป๊ะข้าง ๆ กันทำให้คนอ่านสะดุด
 			col("LOT NO.", "lotno", "lot"),
 			col("Machine", "machineno", "machinenumber", "mcno", "mcnumber", "machineid", "machinesn"),
 			col("Product Spec", "productspec", "speccode", "specificationcode", "spec"),
@@ -335,6 +350,11 @@ var udDatasets = map[string]udDataset{
 			col("Cab guard", "cabguard"),
 			col("IT device", "itdevice"),
 			col("Note1", "note1"),
+			// สามช่องนี้มาจากไฟล์แผนผลิตรายเดือน (Specification sheet + Daily plan)
+			// WH ใช้กรองว่าวันนี้ต้องจ่ายเครื่องไหนบ้าง และไปเทียบประเทศกับใบนำออก
+			col("Country Name", "countryname", "customer", "customername", "country"),
+			col("Main line", "mainline"),
+			col("Stand by shipping", "standbyshipping", "standby"),
 		},
 		Ignore: legacyNoteHeaders,
 	},
@@ -348,7 +368,8 @@ var udDatasetLabels = map[string]string{
 	models.DatasetEngine:        "Engine",
 	models.DatasetEngineITAlloc: "Planning WH",
 	models.DatasetCWCVITS:       "Master Data",
-	models.DatasetSpecSheet:     "Planning MFG",
+	models.DatasetSpecSheet:     "Planning PCP",
+	models.DatasetPCPDailyPlan:  "Planning PCP (Daily plan)",
 }
 
 var udDatasetKeyFields = map[string][]string{
@@ -360,6 +381,7 @@ var udDatasetKeyFields = map[string][]string{
 	models.DatasetEngineITAlloc: {"Machine S/N"},
 	models.DatasetCWCVITS:       {"Product Spec"},
 	models.DatasetSpecSheet:     {"Machine"},
+	models.DatasetPCPDailyPlan:  {"Machine"},
 }
 
 var udDatasetCoreFields = map[string][]string{
@@ -382,6 +404,7 @@ var udDatasetKeyLabel = map[string]string{
 	models.DatasetEngineITAlloc: "Machine S/N (MC#)",
 	models.DatasetCWCVITS:       "Product Spec",
 	models.DatasetSpecSheet:     "Machine No (MC#)",
+	models.DatasetPCPDailyPlan:  "Machine No (MC#)",
 }
 
 func uploadDataDiffKey(dataset string, data map[string]string) string {
@@ -537,7 +560,7 @@ func PreviewUploadDataMapping(c *gin.Context) {
 		return
 	}
 	if !models.IsUploadableDataset(dataset) {
-		c.JSON(400, gin.H{"message": "ชุดข้อมูล " + udDatasetLabels[dataset] + " ไม่เปิดให้อัปโหลดแล้ว — ใช้ Planning WH / Master Data / Planning MFG แทน"})
+		c.JSON(400, gin.H{"message": "ชุดข้อมูล " + udDatasetLabels[dataset] + " ไม่เปิดให้อัปโหลดแล้ว — ใช้ Planning PCP หรือ Master Data แทน"})
 		return
 	}
 	ds = withRuntimeAliases(ds, dataset)
@@ -818,7 +841,26 @@ func readUploadDataRows(c *gin.Context, dataset string, ds udDataset) ([][]strin
 		if err != nil {
 			return nil, "", errUploadNoFile
 		}
-		rows, ok, err := readSpecSheetPCPSheets(fileHeader)
+		// ลองไฟล์แผนผลิตรายเดือนรูปแบบใหม่ก่อน — Specification sheet + Daily plan
+		//
+		// ต้องลองตัวนี้ "ก่อน" ตัวอ่านแบบเดิมเสมอ ห้ามสลับลำดับ
+		//
+		// ตัวอ่านแบบเดิมมองหาชีตที่มีหัวตาราง Machine + Product Spec ซึ่งชีต
+		// Daily plan ก็เข้าเงื่อนไขด้วย (มีคอลัมน์ Machine และ Spec code)
+		// ถ้าให้มันทำงานก่อน มันจะคว้าชีต Daily plan ไปแล้วได้ข้อมูลแค่ 3 คอลัมน์
+		// (LOT NO. · Machine · Product Spec) ส่วนสเปกเครื่องที่เหลือทั้งหมด —
+		// Brand, Destination, IT device, Country Name, Main line — จะว่างเปล่า
+		//
+		// ชีต Specification sheet เป็นแหล่งที่สมบูรณ์กว่า จึงต้องได้สิทธิ์ก่อน
+		rows, ok, err := readPlanningPCPWorkbook(fileHeader)
+		if err != nil {
+			return nil, fileHeader.Filename, err
+		}
+		if ok {
+			return rows, fileHeader.Filename, nil
+		}
+		// ไฟล์รูปแบบเดิมที่มีชีตชื่อ "Spec sheet_pcp" มาตรง ๆ
+		rows, ok, err = readSpecSheetPCPSheets(fileHeader)
 		if err != nil {
 			return nil, fileHeader.Filename, err
 		}
@@ -939,7 +981,7 @@ func UploadDataFile(c *gin.Context) {
 		return
 	}
 	if !models.IsUploadableDataset(dataset) {
-		c.JSON(400, gin.H{"message": "ชุดข้อมูล " + udDatasetLabels[dataset] + " ไม่เปิดให้อัปโหลดแล้ว — ใช้ Planning WH / Master Data / Planning MFG แทน"})
+		c.JSON(400, gin.H{"message": "ชุดข้อมูล " + udDatasetLabels[dataset] + " ไม่เปิดให้อัปโหลดแล้ว — ใช้ Planning PCP หรือ Master Data แทน"})
 		return
 	}
 	ds = withRuntimeAliases(ds, dataset)
@@ -1169,8 +1211,18 @@ func UploadDataFile(c *gin.Context) {
 		return
 	}
 
+	// ไฟล์ Planning PCP มีสองชีต เขียนลงสองตาราง — อัปครั้งเดียวเหมือนเดิม
+	dailyPlanSaved, dailyPlanErr := saveDailyPlanDataset(c, dataset, fileName, userID, now)
+
 	InvalidateMachineIndex()
 	CreateAuditLog("UPLOAD_DATA", 0, "upload_"+dataset, fileName, userID, userName)
+	if dailyPlanSaved > 0 {
+		CreateAuditLog("UPLOAD_DATA", 0, "upload_"+models.DatasetPCPDailyPlan,
+			fmt.Sprintf("%s: %d", fileName, dailyPlanSaved), userID, userName)
+	}
+	if dailyPlanErr != nil {
+		problems = append(problems, "ชีต Daily plan: "+dailyPlanErr.Error())
+	}
 	if len(deleteIDs) > 0 {
 		CreateAuditLog("UPLOAD_DATA", 0, "sync_delete_"+dataset, fmt.Sprintf("%s: %d", fileName, len(deleteIDs)), userID, userName)
 	}
@@ -1187,6 +1239,7 @@ func UploadDataFile(c *gin.Context) {
 		"components": componentCells,
 		"problems":   capProblems(problems),
 		"file":       fileName,
+		"dailyPlan":  dailyPlanSaved,
 	})
 }
 
@@ -1331,7 +1384,7 @@ func fillUploadDataKeys(row *models.UploadDataRow, dataset string, data map[stri
 		row.MachineNo = normalizeDigitCell(data["Machine"])
 		row.LotNo = data["LOT NO."]
 		row.KCMOrder = data["KCM Order"]
-	case models.DatasetDailyPlan:
+	case models.DatasetDailyPlan, models.DatasetPCPDailyPlan:
 		row.MachineNo = normalizeDigitCell(data["Machine"])
 		row.LotNo = data["LOT NO."]
 	case models.DatasetWH1:

@@ -37,9 +37,14 @@ export function flowComponentLabel(code) {
 }
 
 // รายชื่อ MC# ที่ WH เลือกได้ (มาจากไฟล์ Planning WH — ชีต Engine_IT allocation)
-export function getFlowMachines(keyword) {
+// รายชื่อ MC# ให้ WH เลือก
+//
+// date ว่าง = เฉพาะเครื่องที่ต้องจ่ายวันนี้ตามแผน Daily plan
+// date = 'all' = ทั้งหมด · date = 'YYYY-MM-DD' = ของวันนั้น
+export function getFlowMachines(keyword, date) {
   const params = new URLSearchParams();
   if (keyword) params.set('keyword', keyword);
+  if (date) params.set('date', date);
   const qs = params.toString();
   return apiFetch(`/wh-flow/machines${qs ? `?${qs}` : ''}`);
 }

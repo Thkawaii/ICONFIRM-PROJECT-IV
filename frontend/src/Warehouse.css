@@ -2061,3 +2061,20 @@ button.qa-photo-thumb img {
     min-width: 0;
   }
 }
+
+
+/* คำเตือนว่าสองชีตในไฟล์ Planning PCP บอกไม่ตรงกัน
+   ---------------------------------------------------------------------------
+   ใช้โทนส้ม ไม่ใช่แดง เพราะไม่ได้ห้ามจ่ายของ แค่บอกว่าข้อมูลต้นทางขัดกันเอง
+   แดงสงวนไว้ให้กรณีที่สแกนไม่ผ่านจริง ๆ ถ้าใช้แดงกับทุกอย่างคนจะเลิกสนใจ */
+.wh-plan-conflict {
+  margin: 10px 0 0;
+  padding: 11px 14px;
+  border-left: 3px solid #d98324;
+  border-radius: 0 8px 8px 0;
+  background: #fffaf2;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #8a5212;
+  max-width: 640px;
+}
