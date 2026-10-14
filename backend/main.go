@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,7 +50,26 @@ func main() {
 		r.Static("/assets", filepath.Join(frontendDist, "assets"))
 		r.StaticFile("/", filepath.Join(frontendDist, "index.html"))
 
+		// เส้นทางที่ไม่ตรงกับ API ให้คืนหน้าเว็บ เพื่อให้ refresh กลางทางแล้วไม่ 404
+		//
+		// แต่คืนเฉพาะ GET ที่เบราว์เซอร์ขอหน้า HTML เท่านั้น
+		//
+		// ถ้าคืน index.html ให้ทุกอย่าง เวลาเรียก API ผิดเส้นทางจะได้ HTML กลับมา
+		// พร้อมสถานะ 200 แล้ว res.json() ฝั่งหน้าเว็บจะพังด้วยข้อความแบบ
+		// "Unexpected token <" ซึ่งไม่บอกอะไรเลยว่าที่จริงคือเรียก path ผิด
+		//
+		// เรื่องนี้สำคัญขึ้นมากตั้งแต่หน้าเว็บกับ API ใช้ origin เดียวกัน
+		// เพราะเดิมเรียกผิดจะไม่เจอเซิร์ฟเวอร์ตั้งแต่แรก แต่ตอนนี้เจอและตอบ 200
 		r.NoRoute(func(c *gin.Context) {
+			accept := c.GetHeader("Accept")
+			wantsHTML := c.Request.Method == http.MethodGet &&
+				(accept == "" || strings.Contains(accept, "text/html") || strings.Contains(accept, "*/*"))
+			if !wantsHTML {
+				c.JSON(http.StatusNotFound, gin.H{
+					"message": "ไม่พบเส้นทางนี้: " + c.Request.Method + " " + c.Request.URL.Path,
+				})
+				return
+			}
 			c.File(filepath.Join(frontendDist, "index.html"))
 		})
 	} else {

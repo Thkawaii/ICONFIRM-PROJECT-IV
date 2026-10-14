@@ -66,24 +66,50 @@ export async function scanStep({
       input.addEventListener('paste', () => {
         setTimeout(() => doConfirm(true), 0);
       });
-      let lastKeyAt = 0;
-      let fastKeys = 0;
+      // ตรวจว่าสแกนจบแล้วหรือยัง
+      //
+      // ของเดิม (และรอบที่แก้ไปแล้วรอบหนึ่ง) พยายามแยก "เครื่องสแกน" ออกจาก
+      // "คนพิมพ์เอง" ด้วยการนับจังหวะเวลาระหว่างตัวอักษร (ห่างกันไม่เกิน 50ms ฯลฯ)
+      // และเช็ค e.isComposing/e.inputType — ยังพลาดกับ CipherLab RS36/RS38 อยู่ดี
+      // (จังหวะ/การรายงาน flag ของแต่ละเครื่อง/เฟิร์มแวร์ไม่นิ่งพอจะเดาได้แม่นด้วยวิธีนี้)
+      //
+      // เปลี่ยนมาใช้หลักการเดียวกับช่องรับสแกนที่พิสูจน์แล้วว่าใช้ได้จริงกับเครื่องนี้
+      // (ตัวดักสแกนพื้นหลังในหน้า MFG Assembly): ไม่เดาว่าใครพิมพ์ ไม่สนจังหวะเวลา
+      // ใด ๆ ทั้งสิ้น — แค่ "ค่าในช่องเปลี่ยน → รอให้เงียบจริง ๆ (ไม่มีอะไรเข้ามาเพิ่มอีก)
+      // แล้วค่อยลองยืนยันให้" ใช้ได้กับทุกวิธีที่อุปกรณ์ส่งค่าเข้ามา ไม่ว่าจะทีละตัว
+      // เป็นก้อน หรือผ่าน IME composition แบบไหนก็ตาม
+      //
+      // ช่องนี้ออกแบบไว้ใช้กับเครื่องสแกนเป็นหลัก (placeholder บอกชัดว่า "รอรับสัญญาณ
+      // จากเครื่องสแกน") การพิมพ์มือจึงเป็นทางเลือกสำรอง ไม่ใช่ทางหลัก — ยอมแลกความ
+      // เสี่ยงเล็กน้อยที่คนพิมพ์มือแล้วหยุดคิดนานเกิน 400ms จะโดนยืนยันให้ก่อนพิมพ์จบ
+      // เพื่อให้เครื่องสแกนทำงานได้แน่นอนกว่าเดิม (validate() ที่ส่งมายังกันไว้อีกชั้น
+      // ถ้าค่ายังไม่ผ่านจะไม่ยืนยันให้อัตโนมัติอยู่ดี)
+      const QUIET_MS = 400; // เงียบนานเท่านี้ (ไม่มีอะไรเข้ามาเพิ่ม) ถือว่าสแกน/พิมพ์จบ
+      const MIN_LEN = 3;    // สั้นกว่านี้ยังไม่ลองยืนยันให้เอง กันกดโดนทีละตัวแล้วปิดหน้าทันที
+
       let idleTimer = null;
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
-          if (idleTimer) clearTimeout(idleTimer);
-          return;
-        }
-        if (e.key.length !== 1) return;
-        const now = Date.now();
-        fastKeys = now - lastKeyAt <= 50 ? fastKeys + 1 : 0;
-        lastKeyAt = now;
+
+      const armIdle = () => {
         if (idleTimer) clearTimeout(idleTimer);
-        if (fastKeys >= 5) {
-          // รอให้เงียบ 400 ms ก่อน — บาร์โค้ด Kanban ยาว ของเดิมรอ 200 ms แล้วตัดกลางคัน
-          idleTimer = setTimeout(() => doConfirm(true), 400);
+        idleTimer = setTimeout(() => {
+          if (input.value.trim().length >= MIN_LEN) doConfirm(true);
+        }, QUIET_MS);
+      };
+
+      input.addEventListener('input', armIdle);
+      // compositionend ยิงแน่นอนเสมอเมื่อ IME ยืนยันข้อความ — เผื่อ WebView บางตัว
+      // ไม่ยิง "input" ซ้ำอีกครั้งหลัง commit
+      input.addEventListener('compositionend', armIdle);
+
+      // กันของค้าง: ถ้ารอบสแกนก่อนหน้าตรวจไม่ทันว่าจบ (ค่ายังไม่ถูกยืนยัน) แล้วเครื่อง
+      // เริ่มยัดข้อความรอบใหม่เข้ามา (compositionstart) ให้เคลียร์ของเก่าทิ้งก่อนเสมอ
+      // ไม่งั้นข้อมูลรอบใหม่จะไปต่อท้ายของเก่าจนเพี้ยน
+      input.addEventListener('compositionstart', () => {
+        if (!confirmed && input.value) {
+          input.value = '';
         }
       });
+
     }
   });
   if (res.isConfirmed && res.value) return res.value.trim();

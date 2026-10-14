@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SelectField from './Selectfield.jsx';
 import PeriodRangePicker from './PeriodRangePicker.jsx';
 import { getFlowMachines, getFlowMachine, getFlowIssues, issueFlowPart } from '../api/whFlow.js';
-import { scanStep, scanLoading, scanClose, scanSuccessToast, scanErrorAlert } from '../lib/scanPopup.js';
+import { scanStep, scanSelect, scanLoading, scanClose, scanSuccessToast, scanErrorAlert } from '../lib/scanPopup.js';
 import { inPeriod } from '../lib/dateRange.js';
 import { toastError, toastSuccess } from '../lib/toast.js';
 import { CheckCircleIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ChevronRightIcon, CubeIcon, DocumentTextIcon, XMarkIcon } from './icons.jsx';
@@ -115,10 +115,36 @@ export default function WHIssuePanel() {
   function normCode(v) {
     return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   }
+  // หาว่า Part# ที่สแกนมาเป็นของรายการไหนในเครื่องนี้
+  //
+  // เดิมจับคู่จาก expectedPartNo อย่างเดียว ซึ่งใช้ไม่ได้กับ IT Controller แล้ว
+  // เพราะไฟล์ Planning WH ที่เคยกำหนด P/N ไว้ล่วงหน้าเลิกใช้ไปแล้ว
+  // ค่านั้นจึงว่าง หาไม่เจอ แล้วส่ง component ว่างไปให้ backend
+  // backend หารายการไม่เจอ เลยตอบว่าข้อมูลไม่ถูกต้องทุกครั้ง
+  //
+  // ตอนนี้หาสองชั้น: ตรงกับค่าที่แผนกำหนดไว้ก่อน ถ้าไม่เจอค่อยดูรายการ
+  // ที่ "รอสแกนอยู่และไม่มีค่ากำหนดไว้" ซึ่งก็คือ IT Controller กับ Engine
   function planItemOf(machine, code) {
     const key = normCode(code);
     if (!key) return null;
-    return (machine?.items || []).find(it => it.expectedPartNo && normCode(it.expectedPartNo) === key) || null;
+    const items = machine?.items || [];
+
+    const planned = items.find(it => it.expectedPartNo && normCode(it.expectedPartNo) === key);
+    if (planned) return planned;
+
+    // รายการที่ไม่มี P/N กำหนดไว้ — ความถูกต้องไปตรวจที่ backend แทน
+    // (IT Controller เทียบกับทะเบียนใบนำเข้า)
+    const open = items.filter(it => !it.expectedPartNo && it.status !== 'NO_PLAN' && !it.issued);
+    if (open.length === 1) return open[0];
+
+    // มีมากกว่าหนึ่งรายการที่รอสแกน เดาแทนไม่ได้ว่าคนยิงของชิ้นไหน
+    // คืน null ให้ผู้เรียกไปถามผู้ใช้ว่าเป็นของชิ้นไหน
+    return null;
+  }
+
+  // รายการที่รอสแกนและไม่มี P/N กำหนดไว้ — ใช้ตอนต้องถามผู้ใช้ว่ายิงของชิ้นไหน
+  function openItemsOf(machine) {
+    return (machine?.items || []).filter(it => !it.expectedPartNo && it.status !== 'NO_PLAN' && !it.issued);
   }
 
   // เลือก MC# แล้วสแกน Part# — ระบบหาเองว่าเป็นของรายการไหน และต้องสแกน S/N ต่อไหม
@@ -142,12 +168,42 @@ export default function WHIssuePanel() {
       }));
       if (!partNo) return;
 
-      const item = planItemOf(machine, partNo);
+      let item = planItemOf(machine, partNo);
+      if (!item) {
+        // มีหลายรายการที่รอสแกนและไม่มี P/N กำหนดไว้ ต้องให้คนบอกว่ายิงของชิ้นไหน
+        // ส่ง component ว่างไปไม่ได้ backend จะหารายการไม่เจอแล้วตีเป็นข้อมูลผิด
+        const open = openItemsOf(machine);
+        if (open.length > 1) {
+          const pick = await scanSelect({
+            title: 'นี่คือของชิ้นไหน',
+            html: mcHint,
+            options: open.map(it => ({
+              value: it.component,
+              label: it.label
+            }))
+          });
+          if (!pick) return;
+          item = open.find(it => it.component === pick) || null;
+        }
+      }
+      if (!item) {
+        await scanErrorAlert(`ไม่พบรายการที่ตรงกับ P/N ${partNo} ในเครื่องนี้`, {
+          hint: 'ตรวจว่ายิงถูกเครื่อง และรายการนี้ยังไม่ถูกจ่ายไปแล้ว'
+        });
+        return;
+      }
       // CW / CV / SM / MP / Pump HYD — master_data มีแต่ Part# จึงเก็บ S/N ว่างไว้
       // (MFG เป็นคนสแกน S/N# ตอนประกอบ) ไม่เอา Part# ไปใส่ซ้ำในช่อง S/N
       let serialNo = '';
-      if (item?.expectedSerialNo) {
-        // รายการนี้ไฟล์ Planning WH กำหนด S/N ไว้ด้วย → ต้องสแกนต่ออีกขั้น
+      // ถาม S/N จากธง whNeedsSerial ที่ backend ส่งมา ไม่ใช่จากการที่แผนกำหนด S/N ไว้
+      //
+      // ของเดิมถามเฉพาะตอนมี expectedSerialNo ซึ่งมาจากไฟล์ Planning WH
+      // พอเลิกใช้ไฟล์นั้นแล้ว IT Controller จะไม่มี expectedSerialNo อีกต่อไป
+      // หน้าเว็บเลยข้ามการถาม S/N ส่งค่าว่างไป แล้ว backend ปฏิเสธทุกครั้ง
+      //
+      // whNeedsSerial บอกว่า "ของชิ้นนี้ต้องสแกน S/N" ตามชนิดของ ไม่ขึ้นกับว่า
+      // แผนกำหนดค่าไว้หรือไม่ ซึ่งตรงกับสิ่งที่ backend ตรวจจริง
+      if (item?.whNeedsSerial || item?.expectedSerialNo) {
         serialNo = firstToken(await scanStep({
           title: `${item.label} — สแกน S/N`,
           html: `${mcHint}<div class="scan-popup-hint">P/N: <b>${escapeHtml(partNo)}</b></div>`,

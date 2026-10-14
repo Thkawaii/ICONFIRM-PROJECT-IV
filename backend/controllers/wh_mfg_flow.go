@@ -938,9 +938,12 @@ func IssueFlowPart(c *gin.Context) {
 
 	// เทียบกับแผน — เทียบเฉพาะค่าที่แผนกำหนดไว้และมีการสแกนมา
 	// ที่มาของค่าที่ใช้เทียบ — บอกให้ WH รู้ว่าต้องไปแก้ที่ไหนถ้าไม่ตรง
-	expectedFrom := "ไฟล์ Planning WH"
+	expectedFrom := "ไฟล์ Planning PCP"
 	if item.Source == FlowSourceCWCVITS {
 		expectedFrom = "master_data (Product Spec " + orDash(machine.SpecCode) + ")"
+	} else if component == ComponentITC {
+		// IT Controller ไม่มีค่าที่คาดไว้จากแผนแล้ว ความถูกต้องมาจากทะเบียนใบนำเข้า
+		expectedFrom = "ทะเบียนใบอนุญาตนำเข้า"
 	}
 
 	// wrongField = ช่องที่สแกนผิด 1 ช่อง — เก็บคู่ "ค่าที่สแกนได้" กับ "ค่าที่ถูกต้อง"

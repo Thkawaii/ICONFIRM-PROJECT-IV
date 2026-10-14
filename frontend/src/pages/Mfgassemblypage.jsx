@@ -128,36 +128,77 @@ export default function MFGAssemblyPage() {
     setPage(1);
   }, [search, partFilter, pageSize, periodMode, periodAnchor]);
 
-  // รับค่าจากเครื่องสแกนที่ยิงเข้ามาตรง ๆ (ไม่ได้โฟกัสช่องกรอก)
+  // รับค่าจากเครื่องสแกนที่ยิงเข้ามาตอนยังไม่ได้โฟกัสช่องกรอก
+  //
+  // ของเดิมดักที่ window keydown แล้วสะสมตัวอักษรจาก e.key ทีละตัว
+  // ซึ่งใช้ได้กับเครื่องสแกน USB ที่เลียนแบบคีย์บอร์ดจริงเท่านั้น
+  //
+  // เครื่อง Android (CipherLab RS36/RS38) ยัดข้อความเข้าช่องผ่าน InputConnection
+  // keydown ที่ได้จึงเป็น e.key = "Unidentified" (keyCode 229) ความยาวไม่ใช่ 1
+  // ตัวสะสมเลยว่างตลอด ยิงบาร์โค้ดแล้วไม่มีอะไรเกิดขึ้น
+  //
+  // แก้โดยวางช่องรับค่าที่มองไม่เห็นไว้ แล้วโฟกัสมันไว้เสมอ
+  // ค่าที่เครื่องยิงมาจะตกลงช่องนี้ไม่ว่าจะส่งมาทางไหน แล้วอ่านจาก event "input"
+  // ซึ่งยิงเสมอทั้งคีย์บอร์ดจริง IME ของ Android และการวาง
   useEffect(() => {
-    let buffer = '';
-    let flushTimer = null;
-    function fireBuffered() {
-      const code = buffer.trim();
-      buffer = '';
+    const sink = document.createElement('input');
+    // ต้องอยู่ในหน้าจอจริง ไม่ใช่ display:none เพราะช่องที่ซ่อนแบบนั้นโฟกัสไม่ได้
+    // และ Android จะไม่ส่งค่าเข้ามา จึงดันออกนอกจอแทน
+    sink.setAttribute('aria-hidden', 'true');
+    sink.setAttribute('tabindex', '-1');
+    sink.setAttribute('autocomplete', 'off');
+    sink.setAttribute('autocorrect', 'off');
+    sink.setAttribute('autocapitalize', 'off');
+    sink.setAttribute('spellcheck', 'false');
+    // inputmode none = ไม่เรียกคีย์บอร์ดบนจอขึ้นมาบังหน้าจอ
+    sink.setAttribute('inputmode', 'none');
+    sink.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;';
+    document.body.appendChild(sink);
+
+    let idleTimer = null;
+    const flush = () => {
+      const code = sink.value.trim();
+      sink.value = '';
       if (code.length >= 2 && !busyRef.current) fireRef.current(code);
-    }
-    function onKeydown(e) {
-      if (busyRef.current) return;
-      const tag = (e.target?.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-      if (e.target?.closest?.('[data-scan-ignore]')) return;
+    };
+
+    const onInput = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      // รอให้เงียบก่อน เพราะค่ายาว ๆ ทยอยเข้าเป็นช่วง ไม่ได้มาทีเดียวจบ
+      idleTimer = setTimeout(flush, 250);
+    };
+    const onKeydown = e => {
       if (e.key === 'Enter') {
-        if (flushTimer) clearTimeout(flushTimer);
-        fireBuffered();
-        return;
+        if (idleTimer) clearTimeout(idleTimer);
+        flush();
       }
-      if (e.key && e.key.length === 1) {
-        buffer += e.key;
-        if (buffer.length >= 2) e.preventDefault();
-        if (flushTimer) clearTimeout(flushTimer);
-        flushTimer = setTimeout(fireBuffered, 120);
-      }
-    }
-    window.addEventListener('keydown', onKeydown);
+    };
+    sink.addEventListener('input', onInput);
+    sink.addEventListener('keydown', onKeydown);
+
+    // โฟกัสช่องนี้ไว้เมื่อผู้ใช้ไม่ได้กรอกอะไรอยู่
+    // ถ้าแย่งโฟกัสตลอดเวลา คนจะพิมพ์ในช่องค้นหาไม่ได้เลย
+    const keepFocus = () => {
+      if (busyRef.current) return;
+      const el = document.activeElement;
+      const tag = (el?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (el?.closest?.('[data-scan-ignore]')) return;
+      sink.focus({
+        preventScroll: true
+      });
+    };
+    keepFocus();
+    const focusTimer = setInterval(keepFocus, 700);
+    document.addEventListener('click', keepFocus);
+
     return () => {
-      window.removeEventListener('keydown', onKeydown);
-      if (flushTimer) clearTimeout(flushTimer);
+      clearInterval(focusTimer);
+      document.removeEventListener('click', keepFocus);
+      if (idleTimer) clearTimeout(idleTimer);
+      sink.removeEventListener('input', onInput);
+      sink.removeEventListener('keydown', onKeydown);
+      sink.remove();
     };
   }, []);
 
