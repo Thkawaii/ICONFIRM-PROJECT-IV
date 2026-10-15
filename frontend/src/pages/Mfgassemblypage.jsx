@@ -236,12 +236,27 @@ export default function MFGAssemblyPage() {
         await scanErrorAlert(res.message || 'ข้อมูลไม่ถูกต้อง');
         return;
       }
-      // Product Spec ถูก แต่ master_data ยังไม่มีรุ่นนี้ — เตือนแล้วทำงานต่อ
-      // (CW / CV / SM / MP / PH ของเครื่องนี้จะยังยืนยันไม่ได้ ส่วน IT / Engine ทำต่อได้)
-      if (res?.specWarning) {
-        await scanErrorAlert(res.specCheck?.message || 'ไม่พบ Product Spec นี้ใน master_data', {
-          hint: res.specCheck?.detail || ''
-        });
+      // Product Spec ถูก แต่ master_data ยังไม่มีรุ่นนี้
+      //
+      // เตือนเฉพาะตอนที่มีของรอยืนยันที่ต้องพึ่ง master_data จริง ๆ
+      // คือ CW / CV / SM / MP / PH (source = cw_cv_its)
+      //
+      // ของเดิมเตือนทุกครั้งที่ master_data ไม่มีรุ่นนี้ ไม่ว่ากำลังจะยืนยันอะไร
+      // เวลาเครื่องนั้นเหลือแค่ IT Controller ให้ยืนยัน คนจะเจอหน้าต่างแดง
+      // บอกว่า master_data ไม่มี Product Spec แล้วพอกดปิดกลับทำต่อได้ปกติ
+      // อ่านแล้วงงว่าตกลงผิดหรือไม่ผิด และทำให้คำเตือนจริงถูกมองข้ามไปด้วย
+      //
+      // IT Controller ไม่ได้ใช้ master_data เลย — ความถูกต้องมาจากทะเบียนใบนำเข้า
+      // (ดู checkScanAgainstLicense) ส่วน Engine เทียบ P/N ที่ WH จ่ายมาตรง ๆ
+      const pendingNeedsMaster = (res?.machine?.items || []).some(it => it.source === 'cw_cv_its' && it.issued && !it.mfgConfirmed);
+      if (res?.specWarning && pendingNeedsMaster) {
+        // ข้อความสั้น ๆ พอ ไม่ต้องบอก Product Spec หรือชื่อตาราง
+        //
+        // ของเดิมยาวจนอ่านไม่ทันหน้าเครื่อง และศัพท์อย่าง master_data
+        // เป็นชื่อตารางในระบบ ไม่ใช่คำที่คนหน้างานใช้
+        //
+        // รายละเอียดยังอยู่ใน audit log ดูย้อนหลังได้ว่าขาด Product Spec ตัวไหน
+        await scanErrorAlert('ไม่พบข้อมูลในระบบ');
       }
       await runItemChecks(res?.machine, qrCode);
     } finally {
@@ -474,7 +489,9 @@ export default function MFGAssemblyPage() {
       value: item.issuedPartNo,
       state
     }, {
-      label: 'Weight (master_data)',
+      // ป้ายในตารางเทียบ — ใช้คำว่า "ในระบบ" แทนชื่อตาราง
+      // ให้เข้าชุดกับคำเตือนที่เพิ่งเปลี่ยนเป็น "ไม่พบข้อมูลในระบบ"
+      label: 'น้ำหนักในระบบ',
       value: masterWeight,
       state: weightState
     }) + pair({

@@ -84,12 +84,65 @@ export async function scanStep({
       // เสี่ยงเล็กน้อยที่คนพิมพ์มือแล้วหยุดคิดนานเกิน 400ms จะโดนยืนยันให้ก่อนพิมพ์จบ
       // เพื่อให้เครื่องสแกนทำงานได้แน่นอนกว่าเดิม (validate() ที่ส่งมายังกันไว้อีกชั้น
       // ถ้าค่ายังไม่ผ่านจะไม่ยืนยันให้อัตโนมัติอยู่ดี)
-      const QUIET_MS = 400; // เงียบนานเท่านี้ (ไม่มีอะไรเข้ามาเพิ่ม) ถือว่าสแกน/พิมพ์จบ
+      const QUIET_MS = 400; // เงียบนานเท่านี้ (ไม่มีอะไรเข้ามาเพิ่ม) ถือว่าสแกนจบ
       const MIN_LEN = 3;    // สั้นกว่านี้ยังไม่ลองยืนยันให้เอง กันกดโดนทีละตัวแล้วปิดหน้าทันที
 
+      // กันกรณีคนพิมพ์มือแล้วโดนยืนยันให้กลางคัน
+      //
+      // กติกา "เงียบ 400ms แล้วยืนยัน" ใช้ได้ดีกับเครื่องสแกน แต่คนพิมพ์มือ
+      // หยุดคิดเกิน 400ms เป็นเรื่องปกติ ระบบจึงส่งค่าที่ยังพิมพ์ไม่จบไปตรวจ
+      //
+      // ห้ามใช้ e.key แยกคนออกจากเครื่อง
+      //
+      //   บน Android คีย์บอร์ดบนจอส่ง keydown เป็น e.key = "Unidentified"
+      //   (keyCode 229) เหมือนกับที่เครื่องสแกนในโหมด wedge ส่งมาเป๊ะ
+      //   แยกจากตรงนี้ไม่ได้เลย รอบที่แล้วผมแก้ด้วยวิธีนี้จึงยังเด้งอยู่
+      //
+      // ดูที่ "ค่าในช่องโตขึ้นยังไง" แทน ซึ่งเป็นจริงทุกอุปกรณ์
+      //
+      //   คนพิมพ์   โตทีละ 1 ตัว และห่างกันเกิน 250ms
+      //   เครื่อง    โตทีละหลายตัว หรือโตทีละตัวแต่รัวจนไม่ถึง 250ms
+      //
+      // เจอจังหวะแบบคนพิมพ์ติดกัน 2 ครั้ง = ปิดการยืนยันอัตโนมัติของหน้านี้
+      // ให้กดปุ่มยืนยันหรือ Enter เอง ซึ่งคนพิมพ์มือทำอยู่แล้ว
+      const MANUAL_GAP_MS = 250;  // ช้ากว่านี้และโตทีละตัว ถือว่าเป็นมือคน
+      const MANUAL_HITS = 2;      // ต้องเจอติดกันเท่านี้ กันเครื่องสะดุดครั้งเดียว
+
       let idleTimer = null;
+      let manual = false;
+      let lastInputAt = 0;
+      let lastLen = input.value.length;
+      let slowHits = 0;
+
+      const watchTyping = () => {
+        const now = Date.now();
+        const len = input.value.length;
+        const grew = len - lastLen;
+        const gap = lastInputAt ? now - lastInputAt : 0;
+        lastInputAt = now;
+        lastLen = len;
+
+        // ลบตัวอักษรออก = คนกำลังแก้เองแน่นอน
+        if (grew < 0) {
+          manual = true;
+          if (idleTimer) clearTimeout(idleTimer);
+          return;
+        }
+        if (grew === 1 && gap > MANUAL_GAP_MS) {
+          slowHits += 1;
+          if (slowHits >= MANUAL_HITS) {
+            manual = true;
+            if (idleTimer) clearTimeout(idleTimer);
+          }
+        } else if (grew > 0) {
+          // โตเป็นก้อน หรือโตทีละตัวแบบรัว = เครื่องสแกน
+          slowHits = 0;
+        }
+      };
 
       const armIdle = () => {
+        watchTyping();
+        if (manual) return;
         if (idleTimer) clearTimeout(idleTimer);
         idleTimer = setTimeout(() => {
           if (input.value.trim().length >= MIN_LEN) doConfirm(true);
