@@ -4050,15 +4050,60 @@ td[data-label='สถานะ / จำนวนวัน'] .lo-flag-overdue {
   font-weight: 600;
 }
 
+/* กล่องเตือนตอนตัวเลขสองฝั่งไม่ตรงกัน
+   ---------------------------------------------------------------------------
+   ใช้แดง ไม่ใช่ส้ม เพราะนี่คือ "ข้อมูลขัดแย้งกันเอง" ซึ่งต้องมีคนไปแก้
+   ไม่ใช่แค่เรื่องที่ควรรู้ไว้ ส้มในระบบนี้ใช้กับเรื่องที่ยังทำงานต่อได้
+
+   ตัวใหญ่ขึ้นจาก 12.5 เป็น 13.5 และมีขีดหนาด้านซ้าย
+   เพราะของเดิมเป็นแถบจางยาวเต็มความกว้าง ตากวาดผ่านไปโดยไม่ทันสังเกต */
 .lo-trace-conflict {
   margin-top: 15px;
-  padding: 11px 13px;
-  border-radius: 9px;
-  background: #fff6e9;
-  border: 1px solid #f0d7ac;
-  font-size: 12.5px;
+  padding: 12px 14px;
+  border: 1px solid #f0c2c2;
+  border-left: 4px solid #d64545;
+  border-radius: 0 9px 9px 0;
+  background: #fdf3f3;
+  font-size: 13.5px;
   line-height: 1.6;
-  color: #8a5212;
+  color: #9b1c1c;
+  font-weight: 500;
+}
+
+/* ตัวเลขในกล่องเตือนให้เด่นกว่าคำอธิบาย เพราะเป็นสิ่งที่คนต้องเอาไปเทียบ */
+.lo-trace-conflict strong {
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 700;
+}
+
+/* ใบนำเข้าที่ใบนำออกใบนี้มาจาก — อยู่บรรทัดเดียวกัน
+   ของเดิมคำนำหน้ากับเลขใบตัวเท่ากันและสีจางเท่ากัน เลขจึงกลืนไปกับข้อความ
+   ยังเป็นบรรทัดเดียว แต่ให้คำนำหน้าจางลงและเลขใบเด่นขึ้น
+   ตาจะวิ่งไปหาเลขก่อน ซึ่งเป็นสิ่งที่คนต้องการอ่านจริง ๆ */
+.lo-trace-parent {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 7px;
+}
+
+.lo-trace-parent-label {
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--text-muted, #8a929c);
+}
+
+.lo-trace-parent-no {
+  display: inline-block;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text, #16191d);
+  background: #eef2f7;
+  border-radius: 6px;
+  padding: 1px 8px;
 }
 
 .lo-trace-empty {
@@ -4106,15 +4151,18 @@ td[data-label='สถานะ / จำนวนวัน'] .lo-flag-overdue {
 .lo-serial-pending b { color: #a55f10; }
 
 /* คำเตือนตอนยอดที่คนกรอกไม่ตรงกับจำนวนเครื่องที่ยังไม่จ่าย */
+/* เรื่องเดียวกับ .lo-trace-conflict แค่คนละที่ ใช้โทนเดียวกันให้คนอ่านรู้ว่าเรื่องเดียวกัน */
 .lo-serial-warn {
   margin: 0 0 11px;
-  padding: 9px 12px;
-  border-left: 3px solid #d98324;
+  padding: 11px 13px;
+  border: 1px solid #f0c2c2;
+  border-left: 4px solid #d64545;
   border-radius: 0 8px 8px 0;
-  background: #fff6e9;
-  font-size: 12.5px;
+  background: #fdf3f3;
+  font-size: 13.5px;
   line-height: 1.6;
-  color: #8a5212;
+  color: #9b1c1c;
+  font-weight: 500;
 }
 
 /* รายชื่อเครื่องใต้ใบอนุญาต

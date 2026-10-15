@@ -1487,25 +1487,6 @@
   height: 64px;
 }
 
-.wh-photo-modal {
-  max-width: min(92vw, 560px);
-}
-.wh-photo-modal-img {
-  margin: 8px 0 4px;
-  background: #0b0f14;
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.wh-photo-modal-img img {
-  width: 100%;
-  height: auto;
-  max-height: 70vh;
-  object-fit: contain;
-  display: block;
-}
 
 .scan-popup .scan-photo-video {
   width: 100%;
@@ -2077,4 +2058,76 @@ button.qa-photo-thumb img {
   line-height: 1.6;
   color: #8a5212;
   max-width: 640px;
+}
+
+/* กล่องดูรูปถ่ายแบบเต็มจอ
+   ---------------------------------------------------------------------------
+   ต้องลอยสูงกว่ากล่องอื่นเสมอ เพราะเปิดจากในกล่องรายละเอียดอีกที
+   ของเดิมใช้ z-index 50 เท่ากันหมด แล้วกล่องรายละเอียด render ทีหลัง
+   จึงทับรูปไว้ข้างหลัง ซึ่งเป็นอาการที่หน้างานเจอ
+
+   เลือก 120 ไม่ใช่ 51 เพื่อเผื่อที่ให้กล่องอื่นที่อาจเพิ่มมาทีหลัง
+   และให้เห็นชัดว่าตั้งใจให้อยู่บนสุด ไม่ใช่บังเอิญ */
+.wh-modal-overlay.wh-photo-overlay {
+  z-index: 120;
+  background: rgba(8, 11, 16, 0.88);
+  padding: 24px;
+  padding-top: calc(24px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ไม่ใช้กรอบขาวแบบกล่องอื่น เพราะรูปงานมักถ่ายในที่แสงน้อย
+   พื้นเข้มทำให้เห็นรายละเอียดในรูปได้ดีกว่า และไม่มีอะไรมาแย่งสายตา */
+.wh-photo-frame {
+  position: relative;
+  max-width: min(96vw, 900px);
+  max-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wh-photo-frame img {
+  max-width: 100%;
+  max-height: calc(100vh - 100px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  border-radius: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+/* ปุ่มปิดลอยมุมขวาบนของรูป ไม่กินพื้นที่รูป
+   มีพื้นทึบของตัวเองเพราะรูปอาจสว่างตรงมุมจนมองไม่เห็นปุ่ม */
+.wh-photo-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #16191d;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.wh-photo-close:hover {
+  background: #f1f5f9;
+}
+
+/* จอแคบ ปุ่มลอยออกนอกขอบจะโดนตัด จึงดึงเข้ามาในรูป */
+@media (max-width: 560px) {
+  .wh-photo-close {
+    top: 8px;
+    right: 8px;
+  }
+  .wh-photo-frame img {
+    max-height: calc(100vh - 140px);
+  }
 }
