@@ -245,7 +245,7 @@ function SerialTraceCard({
   const daysText = days === null ? '—' : days < 0 ? `เลยกำหนด ${Math.abs(days)} วัน` : `เหลือ ${days} วัน`;
   const statusText = days === null ? 'ไม่มีวันหมดอายุ' : days < 0 ? 'หมดอายุแล้ว' : days <= 15 ? 'ใกล้หมดอายุ' : 'ปกติ';
 
-  const rows = [['Import License', trace.importLicenseNo], ['Export License ล่าสุด', trace.exportLicenseNo], ['วันที่ออกใบอนุญาต', formatThaiDate(trace.exportIssueDate)], ['วันหมดอายุ', formatThaiDate(trace.exportExpireAt)], ['ประเทศปลายทาง', trace.exportCountry], ['P/N', trace.partNo], ['ต่ออายุมาแล้ว', trace.renewalCount > 0 ? `${trace.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สถานะเครื่อง', trace.status === 'จ่ายแล้ว' ? `จ่ายให้เครื่อง ${trace.machineNo || '—'}` : trace.status]];
+  const rows = [['Import License', trace.importLicenseNo], ['Export License ล่าสุด', trace.exportLicenseNo], ['Export License วันที่ออกใบอนุญาตล่าสุด', formatThaiDate(trace.exportIssueDate)], ['Export License วันหมดอายุ', formatThaiDate(trace.exportExpireAt)], ['ประเทศปลายทาง', trace.exportCountry], ['P/N', trace.partNo], ['ต่ออายุมาแล้ว', trace.renewalCount > 0 ? `${trace.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สถานะเครื่อง', trace.status === 'จ่ายแล้ว' ? `จ่ายให้เครื่อง ${trace.machineNo || '—'}` : trace.status]];
 
   return <div className={`lo-trace lo-trace-${tone}`}>
       <div className="lo-trace-head">
@@ -281,7 +281,8 @@ function SerialTraceCard({
 // ---------------------------------------------------------------------------
 
 function LicenseTraceCard({
-  license
+  license,
+  query
 }) {
   if (!license) return null;
 
@@ -290,17 +291,24 @@ function LicenseTraceCard({
   const daysText = days === null ? '—' : days < 0 ? `เลยกำหนด ${Math.abs(days)} วัน` : `เหลือ ${days} วัน`;
   const statusText = days === null ? 'ไม่มีวันหมดอายุ' : days < 0 ? 'หมดอายุแล้ว' : days <= 15 ? 'ใกล้หมดอายุ' : 'ปกติ';
 
+  // กรอกเลขใบนำออกมา หัวการ์ดต้องบอกว่าเป็นใบนำออก ไม่ใช่ทำเหมือนเขากรอกใบนำเข้า
+  // เลขที่ขึ้นหัวการ์ดคือเลขที่พิมพ์ค้นจริง ไม่ใช่ใบนำเข้าที่สังกัด เพราะนั่นมีแยกบอกแล้วด้านล่าง
+  const isExportQuery = license.queryKind === 'export';
+
   const multi = (license.branches?.length ?? 0) > 1;
 
   // ใบที่แตกหลายประเทศ เลขใบนำออกกับวันหมดอายุเล่าเป็นช่องเดียวไม่ได้
   // ย้ายไปกางเป็นตารางสายด้านล่างแทน ช่องบนเหลือเฉพาะที่สรุปได้จริง
-  const rows = multi ? [['ประเทศ', license.country], ['ต่ออายุมาแล้ว', license.renewalCount > 0 ? `${license.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สต็อกใบนำออก', license.stock > 0 ? `${license.stock} เครื่อง` : DASH], ['คงเหลือ (ผู้ใช้กรอก)', license.hasRemain ? `${license.remain} เครื่อง` : 'ยังไม่ได้ระบุ'], ['จำนวน', license.machines > 0 ? `${license.machines} เครื่อง` : DASH], ['จ่ายแล้ว', license.machines > 0 ? `${license.issued} เครื่อง` : DASH], ['ยังไม่จ่าย', license.machines > 0 ? `${license.pending} เครื่อง` : DASH]] : [['Export License ล่าสุด', license.exportLicenseNo], ['วันที่ออกใบอนุญาต', formatThaiDate(license.exportIssueDate)], ['วันหมดอายุ', formatThaiDate(license.exportExpireAt)], ['ประเทศ', license.country], ['ต่ออายุมาแล้ว', license.renewalCount > 0 ? `${license.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สต็อกใบนำออก', license.stock > 0 ? `${license.stock} เครื่อง` : DASH], ['คงเหลือ (ผู้ใช้กรอก)', license.hasRemain ? `${license.remain} เครื่อง` : 'ยังไม่ได้ระบุ'], ['จำนวน', license.machines > 0 ? `${license.machines} เครื่อง` : DASH], ['จ่ายแล้ว', license.machines > 0 ? `${license.issued} เครื่อง` : DASH], ['ยังไม่จ่าย', license.machines > 0 ? `${license.pending} เครื่อง` : DASH]];
+  const rows = multi ? [['ประเทศ', license.country], ['ต่ออายุมาแล้ว', license.renewalCount > 0 ? `${license.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สต็อกใบนำออก', license.stock > 0 ? `${license.stock} เครื่อง` : DASH], ['คงเหลือ (ผู้ใช้กรอก)', license.hasRemain ? `${license.remain} เครื่อง` : 'ยังไม่ได้ระบุ'], ['จำนวน', license.machines > 0 ? `${license.machines} เครื่อง` : DASH], ['จ่ายแล้ว', license.machines > 0 ? `${license.issued} เครื่อง` : DASH], ['ยังไม่จ่าย', license.machines > 0 ? `${license.pending} เครื่อง` : DASH]] : [['Export License ล่าสุด', license.exportLicenseNo], ['Export License วันที่ออกใบอนุญาตล่าสุด', formatThaiDate(license.exportIssueDate)], ['Export License วันหมดอายุ', formatThaiDate(license.exportExpireAt)], ['ประเทศ', license.country], ['ต่ออายุมาแล้ว', license.renewalCount > 0 ? `${license.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สต็อกใบนำออก', license.stock > 0 ? `${license.stock} เครื่อง` : DASH], ['คงเหลือ (ผู้ใช้กรอก)', license.hasRemain ? `${license.remain} เครื่อง` : 'ยังไม่ได้ระบุ'], ['จำนวน', license.machines > 0 ? `${license.machines} เครื่อง` : DASH], ['จ่ายแล้ว', license.machines > 0 ? `${license.issued} เครื่อง` : DASH], ['ยังไม่จ่าย', license.machines > 0 ? `${license.pending} เครื่อง` : DASH]];
 
   return <div className={`lo-trace lo-trace-${tone}`}>
       <div className="lo-trace-head">
         <div>
-          <span className="lo-trace-label">ใบอนุญาตนำเข้า</span>
-          <span className="lo-trace-sn">{license.importLicenseNo}</span>
+          <span className="lo-trace-label">{isExportQuery ? 'ใบนำออก' : 'ใบอนุญาตนำเข้า'}</span>
+          <span className="lo-trace-sn">{isExportQuery ? query || license.exportLicenseNo : license.importLicenseNo}</span>
+          {isExportQuery && <span className="lo-trace-hint">
+              มาจากใบนำเข้า <strong>{license.importLicenseNo || DASH}</strong>
+            </span>}
         </div>
         <div className="lo-trace-days">
           <span className="lo-trace-days-value">{daysText}</span>
@@ -1497,7 +1505,7 @@ export default function LicenseOverviewPage() {
       </div>
 
       <SerialTraceCard trace={trace} notFound={traceMiss} serial={lookupQ.trim()} />
-      <LicenseTraceCard license={licTrace} />
+      <LicenseTraceCard license={licTrace} query={lookupQ.trim()} />
 
       <div className="tsf-history-toolbar">
         <div className="wh-history-filters">
