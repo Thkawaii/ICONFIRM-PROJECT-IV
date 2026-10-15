@@ -245,7 +245,7 @@ function SerialTraceCard({
   const daysText = days === null ? '—' : days < 0 ? `เลยกำหนด ${Math.abs(days)} วัน` : `เหลือ ${days} วัน`;
   const statusText = days === null ? 'ไม่มีวันหมดอายุ' : days < 0 ? 'หมดอายุแล้ว' : days <= 15 ? 'ใกล้หมดอายุ' : 'ปกติ';
 
-  const rows = [['Import License', trace.importLicenseNo], ['Export License ล่าสุด', trace.exportLicenseNo], ['Export License วันที่ออกใบอนุญาตล่าสุด', formatThaiDate(trace.exportIssueDate)], ['Export License วันหมดอายุ', formatThaiDate(trace.exportExpireAt)], ['ประเทศปลายทาง', trace.exportCountry], ['P/N', trace.partNo], ['ต่ออายุมาแล้ว', trace.renewalCount > 0 ? `${trace.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สถานะเครื่อง', trace.status === 'จ่ายแล้ว' ? `จ่ายให้เครื่อง ${trace.machineNo || '—'}` : trace.status]];
+  const rows = [['Import License', trace.importLicenseNo], ['Export License ล่าสุด', trace.exportLicenseNo], ['Export License วันที่ออกใบอนุญาตล่าสุด', formatThaiDate(trace.exportIssueDate)], ['Export License วันหมดอายุ', formatThaiDate(trace.exportExpireAt)], ['ประเทศปลายทาง', trace.exportCountry], ['P/N', trace.partNo], ['ต่ออายุมาแล้ว', trace.renewalCount > 0 ? `${trace.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สถานะเครื่อง', trace.status === 'จ่ายแล้ว' && trace.machineNo ? `จ่ายแล้ว (${trace.machineNo})` : trace.status]];
 
   return <div className={`lo-trace lo-trace-${tone}`}>
       <div className="lo-trace-head">
@@ -306,8 +306,12 @@ function LicenseTraceCard({
         <div>
           <span className="lo-trace-label">{isExportQuery ? 'ใบนำออก' : 'ใบอนุญาตนำเข้า'}</span>
           <span className="lo-trace-sn">{isExportQuery ? query || license.exportLicenseNo : license.importLicenseNo}</span>
-          {isExportQuery && <span className="lo-trace-hint">
-              มาจากใบนำเข้า <strong>{license.importLicenseNo || DASH}</strong>
+          {/* บอกว่าใบนำออกใบนี้มาจากใบนำเข้าใบไหน — บรรทัดเดียว
+              ของเดิมเลขใบเป็นตัวเล็กสีจางเท่าข้อความ จึงกลืนกันจนหาไม่เจอ
+              คงบรรทัดเดียวไว้ แต่ทำให้เลขใบเด่นกว่าคำนำหน้า */}
+          {isExportQuery && <span className="lo-trace-parent">
+              <span className="lo-trace-parent-label">มาจากใบนำเข้า</span>
+              <span className="lo-trace-parent-no">{license.importLicenseNo || DASH}</span>
             </span>}
         </div>
         <div className="lo-trace-days">

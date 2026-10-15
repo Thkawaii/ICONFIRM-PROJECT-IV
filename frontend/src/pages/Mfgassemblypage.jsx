@@ -899,17 +899,16 @@ export default function MFGAssemblyPage() {
           </div>
         </div>}
 
-      {photoView && <div className="wh-modal-overlay" onClick={() => setPhotoView(null)}>
-          <div className="wh-modal wh-photo-modal" onClick={e => e.stopPropagation()}>
-            <h3 className="wh-modal-title">รูปถ่าย</h3>
-            <div className="wh-photo-modal-img">
-              <img src={`${API_BASE_URL}${photoView}`} alt="รูปถ่าย" />
-            </div>
-            <div className="wh-modal-actions">
-              <button className="wh-modal-cancel" onClick={() => setPhotoView(null)}>
-                ปิด
-              </button>
-            </div>
+      {/* กล่องดูรูป
+          ต้องมี class wh-photo-overlay เพื่อยก z-index ให้สูงกว่ากล่องอื่น
+          เพราะกล่องรายละเอียดการประกอบ render ทีหลังในไฟล์นี้
+          ถ้า z-index เท่ากัน ตัวที่มาทีหลังจะทับ รูปเลยไปอยู่ข้างหลัง */}
+      {photoView && <div className="wh-modal-overlay wh-photo-overlay" onClick={() => setPhotoView(null)}>
+          <div className="wh-photo-frame" onClick={e => e.stopPropagation()}>
+            <button className="wh-photo-close" onClick={() => setPhotoView(null)} aria-label="ปิด">
+              <XMarkIcon className="size-5" />
+            </button>
+            <img src={`${API_BASE_URL}${photoView}`} alt="รูปถ่าย" />
           </div>
         </div>}
 
