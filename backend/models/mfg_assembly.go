@@ -55,6 +55,11 @@ type MFGAssembly struct {
 	// SpecCode / ITDevice: เติมตอนอ่าน จากไฟล์ Planning MFG (ใช้ในตาราง QA)
 	SpecCode      string `gorm:"-"`
 	ITDevice      string `gorm:"-"`
+
+	// ImportLicenseNo / ExportLicenseNo: เติมตอนอ่าน จากทะเบียนใบอนุญาตนำเข้า
+	// จับด้วย S/N ของ IT Controller ที่สแกนไว้ ใช้ในตาราง QA และไฟล์ export
+	ImportLicenseNo string `gorm:"-"`
+	ExportLicenseNo string `gorm:"-"`
 	WHRequired    bool   `gorm:"-"`
 	WHPartType    string `gorm:"-"`
 	WHMatchStatus string `gorm:"-"`

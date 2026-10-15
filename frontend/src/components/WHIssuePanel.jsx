@@ -243,11 +243,36 @@ export default function WHIssuePanel() {
   // ประเทศคือสิ่งที่ระบบจะเอาไปเทียบกับใบอนุญาตนำออก คนหน้างานจึงควรเห็นตั้งแต่ตอนเลือก
   //
   // จ่ายครบทุกรายการแล้ว → ขึ้นไอคอนติ๊กถูกท้ายเลขเครื่อง
-  const machineOptions = useMemo(() => machines.map(m => ({
-    value: m.machineNo,
-    label: m.customer ? `${m.machineNo}, ${m.customer}` : m.machineNo,
-    suffix: m.total > 0 && m.issued >= m.total ? <CheckCircleIcon className="size-4 wh-mc-complete" /> : undefined
-  })), [machines]);
+  const machineOptions = useMemo(() => machines.map(m => {
+    const total = m.total ?? 0;
+    const issued = m.issued ?? 0;
+    const done = total > 0 && issued >= total;
+
+    // ท้ายตัวเลือกบอกสถานะการจ่ายของเครื่องนั้น
+    //
+    // ของเดิมขึ้นไอคอนเฉพาะตอนจ่าย "ครบทุกชิ้น" เท่านั้น
+    // แต่เครื่องหนึ่งมีของได้ถึง 7 ชนิด (ITC · Engine · CW · CV · SM · MP · PH)
+    // ไอคอนจึงแทบไม่เคยขึ้น และระหว่างทางก็ไม่รู้เลยว่าเครื่องไหนเริ่มจ่ายไปแล้วบ้าง
+    // พอกลับมาทำต่อตอนบ่ายต้องกดเข้าไปดูทีละคัน
+    //
+    // ตอนนี้บอกสามสถานะ
+    //   ยังไม่เริ่ม   ไม่มีอะไรท้ายตัวเลือก
+    //   จ่ายไปบ้าง   ตัวเลขความคืบหน้า เช่น 3/7
+    //   ครบแล้ว      ไอคอนติ๊กถูก
+    //
+    // ตัวเลขสำคัญกว่าไอคอนในกรณีที่ยังไม่ครบ เพราะบอกได้ว่าเหลืออีกกี่ชิ้น
+    let suffix;
+    if (done) {
+      suffix = <CheckCircleIcon className="size-4 wh-mc-complete" />;
+    } else if (issued > 0) {
+      suffix = <span className="wh-mc-partial">{issued}/{total}</span>;
+    }
+    return {
+      value: m.machineNo,
+      label: m.customer ? `${m.machineNo}, ${m.customer}` : m.machineNo,
+      suffix
+    };
+  }), [machines]);
   const filtered = useMemo(() => {
     let list = issues;
     if (periodMode !== 'all') {
