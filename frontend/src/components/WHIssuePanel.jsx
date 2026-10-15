@@ -147,16 +147,6 @@ export default function WHIssuePanel() {
     return (machine?.items || []).filter(it => !it.expectedPartNo && it.status !== 'NO_PLAN' && !it.issued);
   }
 
-  // เช็คว่า P/N ที่สแกนมา เคยถูกจ่ายไปแล้วในเครื่องนี้หรือไม่ (เทียบกับ issuedPartNo)
-  // ใช้แยกบัค "ยิงซ้ำของที่เคยบันทึกไปแล้ว" ออกจาก "ยิงของที่ไม่มีอยู่ในเครื่องนี้จริง ๆ"
-  // ของเดิมไม่แยกสองกรณีนี้ จึงขึ้น "ไม่พบรายการที่ตรงกับ P/N..." ทุกครั้งที่ item เป็น null
-  // ทั้งที่จริง ๆ แล้วรายการนี้เคยสแกนผ่านไปแล้วและถูกกรองออกจาก open items (เพราะ it.issued)
-  function alreadyIssuedPartNo(machine, code) {
-    const key = normCode(code);
-    if (!key) return false;
-    return (machine?.items || []).some(it => it.issued && normCode(it.issuedPartNo) === key);
-  }
-
   // เลือก MC# แล้วสแกน Part# — ระบบหาเองว่าเป็นของรายการไหน และต้องสแกน S/N ต่อไหม
   async function runQuickScan(machine) {
     if (!machine?.machineNo || busyRef.current) return;
@@ -197,13 +187,9 @@ export default function WHIssuePanel() {
         }
       }
       if (!item) {
-        if (alreadyIssuedPartNo(machine, partNo)) {
-          await scanErrorAlert('รายการนี้เคยบันทึกไปแล้ว');
-        } else {
-          await scanErrorAlert(`ไม่พบรายการที่ตรงกับ P/N ${partNo} ในเครื่องนี้`, {
-            hint: 'ตรวจว่ายิงถูกเครื่อง และรายการนี้ยังไม่ถูกจ่ายไปแล้ว'
-          });
-        }
+        await scanErrorAlert(`ไม่พบรายการที่ตรงกับ P/N ${partNo} ในเครื่องนี้`, {
+          hint: 'ตรวจว่ายิงถูกเครื่อง และรายการนี้ยังไม่ถูกจ่ายไปแล้ว'
+        });
         return;
       }
       // CW / CV / SM / MP / Pump HYD — master_data มีแต่ Part# จึงเก็บ S/N ว่างไว้
@@ -257,11 +243,36 @@ export default function WHIssuePanel() {
   // ประเทศคือสิ่งที่ระบบจะเอาไปเทียบกับใบอนุญาตนำออก คนหน้างานจึงควรเห็นตั้งแต่ตอนเลือก
   //
   // จ่ายครบทุกรายการแล้ว → ขึ้นไอคอนติ๊กถูกท้ายเลขเครื่อง
-  const machineOptions = useMemo(() => machines.map(m => ({
-    value: m.machineNo,
-    label: m.customer ? `${m.machineNo}, ${m.customer}` : m.machineNo,
-    suffix: m.total > 0 && m.issued >= m.total ? <CheckCircleIcon className="size-4 wh-mc-complete" /> : undefined
-  })), [machines]);
+  const machineOptions = useMemo(() => machines.map(m => {
+    const total = m.total ?? 0;
+    const issued = m.issued ?? 0;
+    const done = total > 0 && issued >= total;
+
+    // ท้ายตัวเลือกบอกสถานะการจ่ายของเครื่องนั้น
+    //
+    // ของเดิมขึ้นไอคอนเฉพาะตอนจ่าย "ครบทุกชิ้น" เท่านั้น
+    // แต่เครื่องหนึ่งมีของได้ถึง 7 ชนิด (ITC · Engine · CW · CV · SM · MP · PH)
+    // ไอคอนจึงแทบไม่เคยขึ้น และระหว่างทางก็ไม่รู้เลยว่าเครื่องไหนเริ่มจ่ายไปแล้วบ้าง
+    // พอกลับมาทำต่อตอนบ่ายต้องกดเข้าไปดูทีละคัน
+    //
+    // ตอนนี้บอกสามสถานะ
+    //   ยังไม่เริ่ม   ไม่มีอะไรท้ายตัวเลือก
+    //   จ่ายไปบ้าง   ตัวเลขความคืบหน้า เช่น 3/7
+    //   ครบแล้ว      ไอคอนติ๊กถูก
+    //
+    // ตัวเลขสำคัญกว่าไอคอนในกรณีที่ยังไม่ครบ เพราะบอกได้ว่าเหลืออีกกี่ชิ้น
+    let suffix;
+    if (done) {
+      suffix = <CheckCircleIcon className="size-4 wh-mc-complete" />;
+    } else if (issued > 0) {
+      suffix = <span className="wh-mc-partial">{issued}/{total}</span>;
+    }
+    return {
+      value: m.machineNo,
+      label: m.customer ? `${m.machineNo}, ${m.customer}` : m.machineNo,
+      suffix
+    };
+  }), [machines]);
   const filtered = useMemo(() => {
     let list = issues;
     if (periodMode !== 'all') {

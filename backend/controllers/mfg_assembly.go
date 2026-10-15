@@ -38,6 +38,17 @@ func GetMFGAssemblies(c *gin.Context) {
 				rows[i].SpecCode = pickField(row, "Product Spec", extraColumnPrefix+"Product Spec")
 				rows[i].ITDevice = pickField(row, "IT device", extraColumnPrefix+"IT device")
 			}
+			// เลขใบอนุญาตนำเข้า/นำออก — จับจาก S/N ของ IT Controller ที่สแกนไว้
+			//
+			// ไม่เก็บลงตาราง mfg_assemblies เพราะถ้าภายหลังมีการต่ออายุใบนำออก
+			// ค่าที่เก็บไว้จะกลายเป็นใบเก่าทันที อ่านสดจากทะเบียนทุกครั้งจึงตรงกว่า
+			if lic := licenseItemBySerial(rows[i].SerialNo); lic != nil {
+				rows[i].ImportLicenseNo = strings.TrimSpace(lic.LicenseNo)
+				rows[i].ExportLicenseNo = strings.TrimSpace(lic.ExportLicenseNo)
+				if rows[i].Country == "" {
+					rows[i].Country = strings.TrimSpace(lic.ExportCountry)
+				}
+			}
 			rows[i].PlanComponent = rows[i].Component
 			rows[i].PlanComponentLabel = rows[i].ComponentLabel
 			rows[i].PlanState = PlanStateMatch

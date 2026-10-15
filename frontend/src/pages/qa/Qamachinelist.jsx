@@ -65,35 +65,52 @@ const COLUMNS = {
     xlsx: 'center',
     width: 12
   }],
-  // MFG: รายการที่ยืนยันประกอบแล้ว
+  // MFG: รายการที่ยืนยันประกอบแล้ว (ตาราง QA)
+  //
+  // ลำดับคอลัมน์ตามที่หน้างานขอ
+  //   ITEM · รายการ · MC# · Country# · IT# · P/N# · S/N# · Import# · Export#
+  //   · ประกอบโดย · วันที่ประกอบ · รูปถ่าย · Status
+  //
+  // ITEM เป็นเลขแถว ใส่ไว้ในหัวตารางอยู่แล้ว ไม่ต้องมีในรายการนี้
+  // ถอด Spec Code ออกเพราะไม่อยู่ในชุดที่ขอ ค่ายังดูได้ในหน้ารายละเอียดเครื่อง
   mfg: [{
-    key: 'machineNo',
-    header: 'MC#',
-    xlsx: 'text',
-    mono: true
-  }, {
     key: 'componentLabel',
     header: 'รายการ',
     xlsx: 'center',
     width: 16
   }, {
-    key: 'specCode',
-    header: 'Spec Code',
+    key: 'machineNo',
+    header: 'MC#',
+    xlsx: 'text',
+    mono: true
+  }, {
+    key: 'country',
+    header: 'Country#',
     xlsx: 'center',
-    width: 20
+    width: 14
   }, {
     key: 'itDevice',
-    header: 'IT device',
+    header: 'IT#',
     xlsx: 'center',
-    width: 22
+    width: 24
   }, {
     key: 'partNo',
-    header: 'P/N',
+    header: 'P/N#',
     xlsx: 'text',
     mono: true
   }, {
     key: 'serialNo',
-    header: 'S/N',
+    header: 'S/N#',
+    xlsx: 'text',
+    mono: true
+  }, {
+    key: 'importLicenseNo',
+    header: 'Import#',
+    xlsx: 'text',
+    mono: true
+  }, {
+    key: 'exportLicenseNo',
+    header: 'Export#',
     xlsx: 'text',
     mono: true
   }, {
@@ -329,6 +346,8 @@ export default function QAMachineList() {
       partNo: r.PartNo,
       serialNo: r.SerialNo,
       country: r.Country || asm?.country || '',
+      importLicenseNo: r.ImportLicenseNo || '',
+      exportLicenseNo: r.ExportLicenseNo || '',
       by: r.CreatedBy,
       photoURL: r.PhotoURL,
       status: 'MATCHED'
@@ -540,16 +559,37 @@ export default function QAMachineList() {
     if (!filtered.length || downloading) return;
     setDownloading(true);
     try {
-      const hasPhoto = columns.some(c => c.photo);
+      // ไฟล์ Excel เอาเฉพาะคอลัมน์ที่ใช้ส่งต่อจริง ไม่เหมือนตารางบนหน้าจอ
+      //
+      //   WH    ITEM · MC# · ชนิดพาร์ท · P/N · S/N
+      //   MFG   MC# · Country# · IT# · P/N# · S/N# · Import# · Export#
+      //
+      // ที่ตัดออกคือของที่มีไว้ดูระหว่างทำงาน ไม่ใช่ข้อมูลที่ส่งต่อออกไป —
+      // จ่ายโดย · วันที่สแกน · Status · ประกอบโดย · วันที่ประกอบ · รูปถ่าย
+      // และรูปถ่ายยังทำให้ไฟล์ใหญ่มากโดยที่แทบไม่มีใครเปิดดูในไฟล์
+      //
+      // ตารางบนหน้าจอไม่เปลี่ยนตาม แก้แค่ไฟล์ที่ดาวน์โหลด
+      const EXPORT_KEYS = {
+        wh: ['machineNo', 'componentLabel', 'partNo', 'serialNo'],
+        mfg: ['machineNo', 'country', 'itDevice', 'partNo', 'serialNo',
+              'importLicenseNo', 'exportLicenseNo']
+      };
+      const exportCols = (EXPORT_KEYS[source] || [])
+        .map(k => columns.find(c => c.key === k))
+        .filter(Boolean);
+
+      const hasPhoto = exportCols.some(c => c.photo);
       const sheets = [];
       for (const g of groupForExcel(source, filtered)) {
         const photos = hasPhoto ? await Promise.all(g.rows.map(r => r.photoURL ? fetchImageForXlsx(`${API_BASE_URL}${r.photoURL}`) : Promise.resolve(null))) : [];
-        const xlsxColumns = [{
+        // ฝั่ง QA ไม่ใส่คอลัมน์ ITEM เพราะเป็นเลขแถวบนหน้าจอ ไม่ใช่ข้อมูลของรายการ
+        // Excel มีเลขแถวของตัวเองอยู่แล้ว
+        const xlsxColumns = [...(source === 'mfg' ? [] : [{
           key: 'item',
           header: 'ITEM',
           type: 'number',
           width: 8
-        }, ...columns.map(c => ({
+        }]), ...exportCols.map(c => ({
           key: c.key,
           header: c.header,
           type: c.xlsx,
@@ -561,7 +601,7 @@ export default function QAMachineList() {
           const out = {
             item: i + 1
           };
-          columns.forEach(c => {
+          exportCols.forEach(c => {
             out[c.key] = c.photo ? photos[i] || null : dash(r[c.key]);
           });
           return out;
