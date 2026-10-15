@@ -367,6 +367,11 @@ type LicenseTrace struct {
 	ImportLicenseNo string `json:"importLicenseNo"`
 	Country         string `json:"country"`
 
+	// QueryKind = "import" หรือ "export" — บอกว่าเลขที่พิมพ์ค้นหาตรงกับเลขใบนำเข้า
+	// หรือไปเจอในฐานะเลขใบนำออกแล้วย้อนหาใบนำเข้าที่สังกัด
+	// หน้าเว็บใช้ค่านี้ตัดสินว่าจะขึ้นหัวการ์ดเป็น "ใบอนุญาตนำเข้า" หรือ "ใบนำออก"
+	QueryKind string `json:"queryKind"`
+
 	ExportLicenseNo string     `json:"exportLicenseNo"`
 	ExportIssueDate *time.Time `json:"exportIssueDate,omitempty"`
 	ExportExpireAt  *time.Time `json:"exportExpireAt,omitempty"`
@@ -420,6 +425,7 @@ func traceLicense(licenseNo string) *LicenseTrace {
 	var rows []models.LicenseRenewal
 	config.DB.Where("import_license_no = ?", licenseNo).Find(&rows)
 	importNo := licenseNo
+	queryKind := "import"
 
 	if len(rows) == 0 {
 		// ลองในฐานะเลขใบนำออก แล้วย้อนไปหาใบนำเข้าที่สังกัด
@@ -428,6 +434,7 @@ func traceLicense(licenseNo string) *LicenseTrace {
 			return nil
 		}
 		importNo = one.ImportLicenseNo
+		queryKind = "export"
 		config.DB.Where("import_license_no = ?", importNo).Find(&rows)
 	}
 	if len(rows) == 0 {
@@ -450,7 +457,7 @@ func traceLicense(licenseNo string) *LicenseTrace {
 		byBranch[key] = append(byBranch[key], r)
 	}
 
-	out := &LicenseTrace{ImportLicenseNo: importNo}
+	out := &LicenseTrace{ImportLicenseNo: importNo, QueryKind: queryKind}
 	countries := []string{}
 	exports := []string{}
 
