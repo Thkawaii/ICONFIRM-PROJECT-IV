@@ -152,8 +152,11 @@ export default function WHIssuePanel() {
     if (!machine?.machineNo || busyRef.current) return;
     const planned = (machine.items || []).filter(it => it.status !== 'NO_PLAN');
     if (planned.length === 0) {
+      // คนละกรณีกับสแกนไม่ผ่าน — อันนี้เกิดก่อนยิงอะไรเลย
+      // บอกสาเหตุไว้ได้ แต่ไม่ใช้ชื่อตารางหรือชื่อไฟล์ที่เลิกใช้แล้ว
+      // (ของเดิมเขียนว่า Planning WH ซึ่งถอดออกไปแล้ว ชี้ให้คนไปหาผิดที่)
       await scanErrorAlert('เครื่องนี้ยังไม่มีรายการให้จ่าย', {
-        hint: 'ตรวจว่าอัปโหลด master_data (CW_CV_ITS) และ Planning WH ของเครื่องนี้แล้วหรือยัง'
+        hint: 'ตรวจว่าอัปโหลดข้อมูลของเครื่องนี้ครบแล้วหรือยัง'
       });
       return;
     }
@@ -187,9 +190,9 @@ export default function WHIssuePanel() {
         }
       }
       if (!item) {
-        await scanErrorAlert(`ไม่พบรายการที่ตรงกับ P/N ${partNo} ในเครื่องนี้`, {
-          hint: 'ตรวจว่ายิงถูกเครื่อง และรายการนี้ยังไม่ถูกจ่ายไปแล้ว'
-        });
+        // ข้อความเดียวกับกรณีอื่นที่สแกนไม่ผ่าน ให้หน้างานเห็นแบบเดียวกันหมด
+        // ไม่ต้องบอกว่า P/N ไหนหรือให้ไปตรวจอะไร
+        await scanErrorAlert('ข้อมูลไม่ถูกต้อง');
         return;
       }
       // CW / CV / SM / MP / Pump HYD — master_data มีแต่ Part# จึงเก็บ S/N ว่างไว้
