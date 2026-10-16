@@ -367,6 +367,14 @@ type LicenseTrace struct {
 	ImportLicenseNo string `json:"importLicenseNo"`
 	Country         string `json:"country"`
 
+	// InvoiceNo / DeclarationNo = เลขอินวอยซ์นำเข้า และเลขใบขนสินค้าขาเข้า
+	//
+	// อยู่ในทะเบียนเครื่อง (บัญชีแสดงหมายเลขเครื่อง) ไม่ได้อยู่ในชีตต่ออายุ
+	// จึงต้องอ่านจากแถวของเครื่องที่สังกัดใบนำเข้าใบนี้
+	// ทุกเครื่องใต้ใบเดียวกันใช้เลขชุดเดียวกัน จึงหยิบแถวแรกที่มีค่ามาใช้ได้
+	InvoiceNo     string `json:"invoiceNo,omitempty"`
+	DeclarationNo string `json:"declarationNo,omitempty"`
+
 	// QueryKind = "import" หรือ "export" — บอกว่าเลขที่พิมพ์ค้นหาตรงกับเลขใบนำเข้า
 	// หรือไปเจอในฐานะเลขใบนำออกแล้วย้อนหาใบนำเข้าที่สังกัด
 	// หน้าเว็บใช้ค่านี้ตัดสินว่าจะขึ้นหัวการ์ดเป็น "ใบอนุญาตนำเข้า" หรือ "ใบนำออก"
@@ -516,6 +524,20 @@ func traceLicense(licenseNo string) *LicenseTrace {
 	var items []models.LicenseItem
 	config.DB.Where("license_no = ?", importNo).Find(&items)
 	out.Machines = len(items)
+
+	// หยิบเลขอินวอยซ์กับเลขใบขนจากแถวแรกที่กรอกไว้
+	// ข้ามแถวที่เว้นว่าง เพราะบางไฟล์กรอกเฉพาะแถวแรกของล็อต
+	for i := range items {
+		if out.InvoiceNo == "" {
+			out.InvoiceNo = strings.TrimSpace(items[i].InvoiceNo)
+		}
+		if out.DeclarationNo == "" {
+			out.DeclarationNo = strings.TrimSpace(items[i].DeclarationNo)
+		}
+		if out.InvoiceNo != "" && out.DeclarationNo != "" {
+			break
+		}
+	}
 	if len(items) > 0 {
 		sns := make([]string, 0, len(items))
 		for _, it := range items {
@@ -559,5 +581,45 @@ func LookupTrace(c *gin.Context) {
 		return
 	}
 
-	c.JSON(404, gin.H{"kind": "none", "message": "ไม่พบ " + q + " ทั้งในทะเบียนเครื่องและในชีตต่ออายุ"})
+	// สุดท้ายลองในฐานะ "เลขเครื่อง" (MC#)
+	//
+	// หน้างานจำเลขเครื่องได้ แต่จำ S/N ของกล่อง IT ไม่ได้ เพราะไม่ได้ถือกล่องอยู่
+	// พอ WH จ่ายของไปแล้ว ระบบรู้อยู่แล้วว่าเครื่องคันนี้ใช้กล่องไหน
+	// จึงย้อนจากเลขเครื่องไปหา S/N แล้วสืบต่อด้วยเส้นทางเดิมได้เลย
+	//
+	// อยู่ท้ายสุดเพราะเจาะจงน้อยที่สุด และเลขเครื่องกับ S/N หน้าตาต่างกันพอ
+	// ที่จะไม่ชนกันอยู่แล้ว
+	if sn := itcSerialOfMachine(q); sn != "" {
+		if item := licenseItemBySerial(sn); item != nil {
+			t := buildSerialTrace(item)
+			c.JSON(200, gin.H{"kind": "serial", "trace": t, "viaMachine": strings.TrimSpace(q)})
+			return
+		}
+	}
+
+	c.JSON(404, gin.H{"kind": "none", "message": "ไม่พบ " + q + " ในระบบ"})
+}
+
+// itcSerialOfMachine: หา S/N ของกล่อง IT Controller ที่ WH จ่ายให้เครื่องคันนี้
+//
+// เอาตัวล่าสุดถ้ามีหลายรายการ เพราะกล่องอาจถูกเปลี่ยนระหว่างทาง
+// คืนค่าว่างถ้ายังไม่เคยจ่าย ซึ่งไม่ใช่ความผิดพลาด แค่ยังไม่ถึงขั้นตอนนั้น
+func itcSerialOfMachine(machineNo string) string {
+	machineNo = strings.TrimSpace(machineNo)
+	if machineNo == "" {
+		return ""
+	}
+	keys := dedupeCodes(machineNo, ResolveMachineNo(machineNo), CurrentCodeOf(machineNo))
+	if len(keys) == 0 {
+		keys = []string{machineNo}
+	}
+	var row models.PartCheck
+	if err := config.DB.
+		Where("machine_no IN ?", keys).
+		Where("part_type = ?", ComponentITC).
+		Where("match_status = ?", models.MatchStatusMatch).
+		Order("checked_datetime desc").First(&row).Error; err != nil {
+		return ""
+	}
+	return strings.TrimSpace(row.SN)
 }

@@ -4,7 +4,7 @@ import SelectField from '../components/Selectfield.jsx';
 import useFileDrop from '../lib/useFileDrop.js';
 import { getUploadData, uploadDataFile, deleteUploadDataRow, updateUploadDataRow, clearUploadData, previewUploadData } from '../api/uploadData.js';
 import { PreviewResult, ChangePreview } from '../components/FormatTools.jsx';
-import { EditableCell, EditHint, LockBadge, useLiveRefresh } from '../components/InlineEdit.jsx';
+import { EditableCell, EditHint, useLiveRefresh } from '../components/InlineEdit.jsx';
 import { ADMIN_NAV_ITEMS } from './AdminDashboardpage.jsx';
 import { confirmUploadDeletes, syncResultParts } from '../lib/uploadSync.js';
 import { confirmDelete, toastError, toastSuccess } from '../lib/toast.js';
@@ -505,13 +505,12 @@ function DatasetView({
             <tr>
               <th className="ud-th-sticky">#</th>
               {displayColumns.map(c => <th key={c}>{c}</th>)}
-              <th>สถานะการสแกน</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {loading && <tr>
-                <td colSpan={displayColumns.length + 3} className="wh-empty-cell">
+                <td colSpan={displayColumns.length + 2} className="wh-empty-cell">
                   กำลังโหลดข้อมูล...
                 </td>
               </tr>}
@@ -520,9 +519,6 @@ function DatasetView({
                   {displayColumns.map(c => <td key={c} data-label={c}>
                       <EditableCell locked={!!row.Locked} lockReason={row.LockReason} readOnly={!canEdit} label={c} value={cellValue(row, c)} onSave={v => saveCell(row, c, v)} />
                     </td>)}
-                  <td data-label="สถานะการสแกน">
-                    {row.Locked ? <LockBadge locked reason={row.LockReason} /> : <span className="ie-empty">ยังไม่ได้สแกน</span>}
-                  </td>
                   <td className="wh-cell-action">
                     <div style={{
                 display: 'flex',
@@ -536,7 +532,7 @@ function DatasetView({
                   </td>
                 </tr>)}
             {!loading && rows.length === 0 && <tr>
-                <td colSpan={displayColumns.length + 3} className="wh-empty-cell">
+                <td colSpan={displayColumns.length + 2} className="wh-empty-cell">
                   ยังไม่มีรายการที่อัปโหลด
                 </td>
               </tr>}
