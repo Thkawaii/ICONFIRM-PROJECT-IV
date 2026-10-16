@@ -229,7 +229,8 @@ function buildChainRows(steps) {
 function SerialTraceCard({
   trace,
   notFound,
-  serial
+  serial,
+  viaMachine = ''
 }) {
   if (notFound) {
     return <div className="lo-trace lo-trace-empty">
@@ -245,13 +246,26 @@ function SerialTraceCard({
   const daysText = days === null ? '—' : days < 0 ? `เลยกำหนด ${Math.abs(days)} วัน` : `เหลือ ${days} วัน`;
   const statusText = days === null ? 'ไม่มีวันหมดอายุ' : days < 0 ? 'หมดอายุแล้ว' : days <= 15 ? 'ใกล้หมดอายุ' : 'ปกติ';
 
-  const rows = [['Import License', trace.importLicenseNo], ['Export License ล่าสุด', trace.exportLicenseNo], ['Export License วันที่ออกใบอนุญาตล่าสุด', formatThaiDate(trace.exportIssueDate)], ['Export License วันหมดอายุ', formatThaiDate(trace.exportExpireAt)], ['ประเทศปลายทาง', trace.exportCountry], ['P/N', trace.partNo], ['ต่ออายุมาแล้ว', trace.renewalCount > 0 ? `${trace.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สถานะเครื่อง', trace.status === 'จ่ายแล้ว' && trace.machineNo ? `จ่ายแล้ว (${trace.machineNo})` : trace.status]];
+  const rows = [['Import License', trace.importLicenseNo], ['Export License ล่าสุด', trace.exportLicenseNo], ['Export License วันที่ออกใบอนุญาตล่าสุด', formatThaiDate(trace.exportIssueDate)], ['Export License วันหมดอายุ', formatThaiDate(trace.exportExpireAt)], ['ประเทศปลายทาง', trace.exportCountry], ['P/N', trace.partNo], ['S/N', trace.serialNo], ['ต่ออายุมาแล้ว', trace.renewalCount > 0 ? `${trace.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'],
+  // ค้นด้วยเลขเครื่อง = รู้อยู่แล้วว่าจ่ายแล้ว เพราะระบบหาเจอจากบันทึกการจ่ายของ
+  // และเลขเครื่องก็อยู่หัวการ์ดไปแล้ว บรรทัดนี้จึงซ้ำเปล่า ๆ
+  // ค้นด้วย S/N ตรง ๆ ยังต้องมี เพราะบอกว่ากล่องนี้ถูกจ่ายไปหรือยัง
+  ...(viaMachine ? [] : [['สถานะเครื่อง', trace.status === 'จ่ายแล้ว' && trace.machineNo ? `จ่ายแล้ว (${trace.machineNo})` : trace.status]])];
 
   return <div className={`lo-trace lo-trace-${tone}`}>
       <div className="lo-trace-head">
+        {/* ค้นด้วยเลขเครื่อง ให้เลขเครื่องเป็นตัวหลัก
+            เพราะนั่นคือสิ่งที่คนพิมพ์ลงไปและกำลังตามหาอยู่
+            ส่วน S/N ของกล่อง IT เป็นข้อมูลที่ระบบหามาให้ จึงเป็นบรรทัดรอง
+
+            ค้นด้วย S/N ตรง ๆ ก็ยังแสดง S/N เป็นตัวหลักเหมือนเดิม */}
         <div>
-          <span className="lo-trace-label">หมายเลขเครื่อง (S/N)</span>
-          <span className="lo-trace-sn">{trace.serialNo}</span>
+          <span className="lo-trace-label">{viaMachine ? 'Machine No' : 'หมายเลขเครื่อง (S/N)'}</span>
+          <span className="lo-trace-sn">{viaMachine || trace.serialNo}</span>
+          {viaMachine && <span className="lo-trace-parent">
+              <span className="lo-trace-parent-label">ของหมายเลขเครื่อง</span>
+              <span className="lo-trace-parent-no">{trace.serialNo}</span>
+            </span>}
         </div>
         <div className="lo-trace-days">
           <span className="lo-trace-days-value">{daysText}</span>
@@ -299,7 +313,7 @@ function LicenseTraceCard({
 
   // ใบที่แตกหลายประเทศ เลขใบนำออกกับวันหมดอายุเล่าเป็นช่องเดียวไม่ได้
   // ย้ายไปกางเป็นตารางสายด้านล่างแทน ช่องบนเหลือเฉพาะที่สรุปได้จริง
-  const rows = multi ? [['ประเทศ', license.country], ['ต่ออายุมาแล้ว', license.renewalCount > 0 ? `${license.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สต็อกใบนำออก', license.stock > 0 ? `${license.stock} เครื่อง` : DASH], ['คงเหลือ (ผู้ใช้กรอก)', license.hasRemain ? `${license.remain} เครื่อง` : 'ยังไม่ได้ระบุ'], ['จำนวน', license.machines > 0 ? `${license.machines} เครื่อง` : DASH], ['จ่ายแล้ว', license.machines > 0 ? `${license.issued} เครื่อง` : DASH], ['ยังไม่จ่าย', license.machines > 0 ? `${license.pending} เครื่อง` : DASH]] : [['Export License ล่าสุด', license.exportLicenseNo], ['Export License วันที่ออกใบอนุญาตล่าสุด', formatThaiDate(license.exportIssueDate)], ['Export License วันหมดอายุ', formatThaiDate(license.exportExpireAt)], ['ประเทศ', license.country], ['ต่ออายุมาแล้ว', license.renewalCount > 0 ? `${license.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['สต็อกใบนำออก', license.stock > 0 ? `${license.stock} เครื่อง` : DASH], ['คงเหลือ (ผู้ใช้กรอก)', license.hasRemain ? `${license.remain} เครื่อง` : 'ยังไม่ได้ระบุ'], ['จำนวน', license.machines > 0 ? `${license.machines} เครื่อง` : DASH], ['จ่ายแล้ว', license.machines > 0 ? `${license.issued} เครื่อง` : DASH], ['ยังไม่จ่าย', license.machines > 0 ? `${license.pending} เครื่อง` : DASH]];
+  const rows = multi ? [['ประเทศ', license.country], ['ต่ออายุมาแล้ว', license.renewalCount > 0 ? `${license.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['เลขอินวอยซ์นำเข้า', license.invoiceNo], ['เลขใบขนสินค้าขาเข้า', license.declarationNo], ['สต็อกใบนำออก', license.stock > 0 ? `${license.stock} เครื่อง` : DASH], ['คงเหลือ (ผู้ใช้กรอก)', license.hasRemain ? `${license.remain} เครื่อง` : 'ยังไม่ได้ระบุ'], ['จำนวน', license.machines > 0 ? `${license.machines} เครื่อง` : DASH], ['จ่ายแล้ว', license.machines > 0 ? `${license.issued} เครื่อง` : DASH], ['ยังไม่จ่าย', license.machines > 0 ? `${license.pending} เครื่อง` : DASH]] : [['Export License ล่าสุด', license.exportLicenseNo], ['Export License วันที่ออกใบอนุญาตล่าสุด', formatThaiDate(license.exportIssueDate)], ['Export License วันหมดอายุ', formatThaiDate(license.exportExpireAt)], ['ประเทศ', license.country], ['ต่ออายุมาแล้ว', license.renewalCount > 0 ? `${license.renewalCount} ครั้ง` : 'ยังไม่เคยต่อ'], ['เลขอินวอยซ์นำเข้า', license.invoiceNo], ['เลขใบขนสินค้าขาเข้า', license.declarationNo], ['สต็อกใบนำออก', license.stock > 0 ? `${license.stock} เครื่อง` : DASH], ['คงเหลือ (ผู้ใช้กรอก)', license.hasRemain ? `${license.remain} เครื่อง` : 'ยังไม่ได้ระบุ'], ['จำนวน', license.machines > 0 ? `${license.machines} เครื่อง` : DASH], ['จ่ายแล้ว', license.machines > 0 ? `${license.issued} เครื่อง` : DASH], ['ยังไม่จ่าย', license.machines > 0 ? `${license.pending} เครื่อง` : DASH]];
 
   return <div className={`lo-trace lo-trace-${tone}`}>
       <div className="lo-trace-head">
@@ -924,6 +938,7 @@ export default function LicenseOverviewPage() {
   const [trace, setTrace] = useState(null);
   const [licTrace, setLicTrace] = useState(null);
   const [traceMiss, setTraceMiss] = useState(false);
+  const [viaMachine, setViaMachine] = useState('');
   const [country, setCountry] = useState(COUNTRY_ALL);
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
@@ -985,6 +1000,7 @@ export default function LicenseOverviewPage() {
       setTrace(null);
       setLicTrace(null);
       setTraceMiss(false);
+      setViaMachine('');
       setLookupLoading(false);
       return;
     }
@@ -996,12 +1012,16 @@ export default function LicenseOverviewPage() {
         const res = await lookupTrace(q);
         if (!alive) return;
         setTrace(res?.kind === 'serial' ? res.trace : null);
+        // ค้นด้วยเลขเครื่องแล้วระบบย้อนไปหา S/N ให้ — บอกผู้ใช้ด้วยว่ามาจากเครื่องไหน
+        // ไม่งั้นพิมพ์ MC# ลงไปแล้วได้การ์ด S/N กลับมา จะงงว่าเลขนี้มาจากไหน
+        setViaMachine(res?.viaMachine || '');
         setLicTrace(res?.kind === 'license' ? res.license : null);
         setTraceMiss(false);
       } catch {
         if (!alive) return;
         setTrace(null);
         setLicTrace(null);
+        setViaMachine('');
         setTraceMiss(true);
       } finally {
         if (alive) setLookupLoading(false);
@@ -1241,6 +1261,7 @@ export default function LicenseOverviewPage() {
         type: 'center',
         width: 16
       }, {
+        // ใช้ center ไม่ใช่ number เพราะช่องนี้มีขีดได้เมื่อยังไม่มีข้อมูล
         key: 'stock',
         header: 'จำนวนเครื่อง',
         type: 'center',
@@ -1284,8 +1305,12 @@ export default function LicenseOverviewPage() {
             // ตัวเลขล้วน เพื่อให้เรียงและกรองใน Excel ได้ ติดลบ = หมดอายุไปแล้วกี่วัน
             daysLeft: typeof r.daysLeft === 'number' ? r.daysLeft : DASH,
             statusText: licenseDaysLabel(r.status, r.daysLeft),
-            stock: r.stock ?? 0,
-            remain: r.remain ?? 0,
+            // ใบที่ยังไม่มีข้อมูลทะเบียน หรือยังไม่ได้กรอก REMAIN ต้องเว้นว่าง ไม่ใช่ใส่ 0
+            //
+            // เลข 0 ในไฟล์นี้อ่านว่า "ของหมดแล้ว" ซึ่งเป็นคนละเรื่องกับ "ยังไม่ได้กรอก"
+            // คนที่เปิดไฟล์ไปเทียบยอดจะสรุปผิดทันที และใบกลุ่มนี้คือใบที่ต้องตามมากที่สุด
+            stock: r.hasLedger ? r.stock ?? 0 : DASH,
+            remain: r.hasLedger && !r.remainMissing ? r.remain ?? 0 : DASH,
             note: [r.exportRenewalOverdue ? 'ต้องยื่นใบนำออกใบใหม่' : '', r.untouchedStock ? 'ยังไม่ได้นำของออก' : '', r.remainMissing && !r.completed ? 'ยังไม่ได้ระบุจำนวน' : '', r.remainInvalid ? 'ข้อมูลไม่ถูกต้อง (REMAIN ติดลบ)' : '', r.remainMismatch ? r.remainMismatchNote : '', r.manualClosed ? `ปิดโดยอนุมัติ${r.manualClosedBy ? ' — ' + r.manualClosedBy : ''}${r.manualCloseNote ? ' (' + r.manualCloseNote + ')' : ''}` : ''].filter(Boolean).join(' · ') || DASH
           }))
         };
@@ -1326,6 +1351,16 @@ export default function LicenseOverviewPage() {
         type: 'center',
         width: 13
       }, {
+        key: 'invalid',
+        header: 'ข้อมูลไม่ถูกต้อง',
+        type: 'center',
+        width: 15
+      }, {
+        key: 'noRemain',
+        header: 'ยังไม่ได้กรอกยอด',
+        type: 'center',
+        width: 16
+      }, {
         key: 'remain',
         header: 'ของค้างรวม (เครื่อง)',
         type: 'center',
@@ -1343,7 +1378,30 @@ export default function LicenseOverviewPage() {
         expiring: rowsIn.filter(r => r.status === 'EXPIRING').length,
         normal: rowsIn.filter(r => r.status === 'VALID' || r.status === 'NO_DATE').length,
         done: rowsIn.filter(r => r.completed).length,
-        remain: rowsIn.reduce((acc, r) => acc + (r.remain ?? 0), 0),
+
+        // นับใบที่ข้อมูลยังเชื่อไม่ได้แยกออกมา ไม่กลืนไปอยู่ในช่องอื่น
+        //
+        // ของเดิมนับแค่ 4 สถานะ ใบที่เป็น INVALID (REMAIN ติดลบ) และ RENEWED
+        // จึงหายไปจากทุกช่อง ยอดสี่ช่องบวกกันแล้วไม่เท่ากับใบทั้งหมด
+        // คนที่เอาไปเทียบจะงงว่าใบหายไปไหน
+        invalid: rowsIn.filter(r => r.status === 'INVALID' || r.remainInvalid).length,
+
+        // บวกเฉพาะใบที่กรอก REMAIN ไว้จริง และตัวเลขใช้ได้
+        //
+        // ข้ามสองกลุ่ม
+        //   ยังไม่ได้กรอก    ของเดิมนับเป็น 0 ยอดรวมจึงดูน้อยกว่าความจริง
+        //   REMAIN ติดลบ     เป็นข้อมูลผิด ถ้าบวกเข้าไปจะไปลบยอดของใบอื่นทิ้ง
+        //
+        // ทั้งสองกลุ่มมีช่องนับของตัวเองแล้ว จึงไม่หายไปจากไฟล์
+        remain: rowsIn.reduce((acc, r) => {
+          if (!r.hasLedger || r.remainMissing || r.remainInvalid) return acc;
+          const v = r.remain ?? 0;
+          return acc + (v > 0 ? v : 0);
+        }, 0),
+
+        // ใบที่ยังไม่ได้กรอกยอด — ต้องตามให้กรอกก่อนถึงจะเทียบยอดได้
+        noRemain: rowsIn.filter(r => r.hasLedger && r.remainMissing).length,
+
         // ใบที่ต้องลงมือทำจริง — หมดอายุหรือใกล้หมด และยังไม่ปิดงาน
         todo: rowsIn.filter(r => !r.completed && (r.status === 'EXPIRED' || r.status === 'EXPIRING')).length
       });
@@ -1498,7 +1556,7 @@ export default function LicenseOverviewPage() {
       <div className="lo-lookup">
         <div className="lo-lookup-field">
           <label className="lo-lookup-label" htmlFor="lo-lookup-input">
-            ดูข้อมูลใบอนุญาต
+            ตรวจสอบข้อมูล
           </label>
           <input id="lo-lookup-input" className="lo-lookup-input" type="text" value={lookupQ} onChange={e => setLookupQ(e.target.value)} />
           {lookupLoading && <span className="lo-lookup-hint">กำลังค้นหา...</span>}
@@ -1508,7 +1566,7 @@ export default function LicenseOverviewPage() {
           </button>}
       </div>
 
-      <SerialTraceCard trace={trace} notFound={traceMiss} serial={lookupQ.trim()} />
+      <SerialTraceCard trace={trace} notFound={traceMiss} serial={lookupQ.trim()} viaMachine={viaMachine} />
       <LicenseTraceCard license={licTrace} query={lookupQ.trim()} />
 
       <div className="tsf-history-toolbar">

@@ -474,8 +474,19 @@ func saveDailyPlanDataset(c *gin.Context, dataset, fileName string, userID uint,
 		rows = append(rows, row)
 	}
 
+	// ลบเฉพาะแถวที่มาจากไฟล์ชื่อเดียวกัน ไม่ใช่ลบทั้งตาราง
+	//
+	// ของเดิมลบทิ้งหมดทุกครั้งที่อัป ทำให้อัปไฟล์ที่สองแล้วแผนจากไฟล์แรกหายไป
+	// ซึ่งขัดกับตารางอื่นในระบบที่ยึดชื่อไฟล์เป็นตัวแยกชุดข้อมูล (ดู sameUploadFile)
+	//
+	//   อัปไฟล์ชื่อเดิม   แทนที่ของชุดนั้น  (แผนรอบใหม่ย่อมแทนรอบเก่าทั้งก้อน)
+	//   อัปไฟล์ชื่อใหม่   ต่อท้าย ของเดิมอยู่ครบ
+	//
+	// เทียบชื่อแบบ normalize ให้ตรงกับที่ sameUploadFile ใช้
+	// จะได้ไม่พลาดเพราะตัวพิมพ์หรือช่องว่างต่างกัน
 	err = config.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("dataset = ?", models.DatasetPCPDailyPlan).
+			Where("LOWER(TRIM(file_name)) = ?", normFileName(fileName)).
 			Delete(&models.UploadDataRow{}).Error; err != nil {
 			return err
 		}

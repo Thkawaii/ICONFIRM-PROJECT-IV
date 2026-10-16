@@ -1144,10 +1144,21 @@ func flowExpectedSummary(machine FlowMachine) string {
 
 // flowSerialOwner: เลขของชิ้นนี้ถูกจ่ายให้เครื่องอื่นไปแล้วหรือไม่ ("" = ยังไม่ถูกจ่าย)
 func flowSerialOwner(component, pn, sn, machineNo string) string {
+	// เช็คเฉพาะของที่มีหมายเลขเครื่องรายตัว
+	//
+	// ของเดิมถ้าไม่มี S/N จะเอา Part# มาใช้แทน แล้วถามว่า
+	// "Part# นี้เคยจ่ายให้เครื่องอื่นหรือยัง"
+	//
+	// ใช้ไม่ได้ เพราะ CW / CV / SM / MP / PH ใช้ Part# ร่วมกันทุกเครื่อง
+	// ที่เป็น Product Spec เดียวกัน — Part# มาจาก master_data ซึ่งผูกกับรุ่น
+	// ไม่ได้ผูกกับตัวของ
+	//
+	// ผลคือจ่าย CW ให้เครื่องแรกได้ พอเครื่องที่สองรุ่นเดียวกันมาจ่าย
+	// ระบบบอกว่าของชิ้นนี้ถูกจ่ายไปแล้วและปฏิเสธ ทั้งที่เป็นคนละชิ้นกัน
+	// (ในข้อมูลจริงวันหนึ่งมี 11 เครื่อง จ่าย CW ไม่ได้ถึง 6 เครื่อง)
+	//
+	// ตอนนี้ไม่มี S/N = ไม่เช็ค เพราะไม่มีอะไรให้ระบุตัวชิ้นของได้
 	needle := strings.TrimSpace(sn)
-	if needle == "" {
-		needle = strings.TrimSpace(pn)
-	}
 	if needle == "" {
 		return ""
 	}
@@ -1159,7 +1170,9 @@ func flowSerialOwner(component, pn, sn, machineNo string) string {
 	var rows []models.PartCheck
 	config.DB.Where("part_type = ?", component).
 		Where("match_status = ?", models.MatchStatusMatch).
-		Where("sn IN ? OR pn IN ?", variants, variants).
+		// ดูเฉพาะคอลัมน์ sn — ไม่ต้องดู pn เพราะ needle เป็น S/N เสมอแล้ว
+		// ถ้ายังดู pn ด้วย จะกลับไปเจอปัญหาเดิมเมื่อของบางชิ้นบันทึก Part# ไว้ในช่อง sn
+		Where("sn IN ?", variants).
 		Limit(50).Find(&rows)
 
 	for _, r := range rows {
