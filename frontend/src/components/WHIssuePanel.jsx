@@ -30,9 +30,25 @@ function escapeHtml(v) {
     "'": '&#39;'
   })[ch]);
 }
+// สติกเกอร์บนกล่อง IT Controller ใส่ P/N กับ S/N ไว้ในบาร์โค้ดเดียวกัน
+//
+//   ยิงครั้งเดียวได้  "YN22E00849FA 878270007402"
+//                      ^^^^^^^^^^^^ P/N   ^^^^^^^^^^^^ S/N
+//
+// ขั้นสแกน P/N เอาวรรคแรก ขั้นสแกน S/N เอาวรรคที่สอง
+// คนหน้างานจึงยิงบาร์โค้ดเดิมซ้ำได้ทั้งสองขั้น ไม่ต้องหาบาร์โค้ดคนละตัว
+function scanTokens(v) {
+  if (!v) return [];
+  return String(v).trim().split(/\s+/).filter(Boolean);
+}
 function firstToken(v) {
-  if (!v) return '';
-  return String(v).trim().split(/\s+/)[0] || '';
+  return scanTokens(v)[0] || '';
+}
+// วรรคที่สอง ถ้าไม่มีก็ถอยไปใช้วรรคแรก
+// เผื่อกรณีที่บาร์โค้ดของ S/N แยกใบมาต่างหาก ซึ่งจะมีค่าเดียว
+function serialToken(v) {
+  const t = scanTokens(v);
+  return t[1] || t[0] || '';
 }
 function fmtDate(value) {
   if (!value) return DASH;
@@ -207,11 +223,13 @@ export default function WHIssuePanel() {
       // whNeedsSerial บอกว่า "ของชิ้นนี้ต้องสแกน S/N" ตามชนิดของ ไม่ขึ้นกับว่า
       // แผนกำหนดค่าไว้หรือไม่ ซึ่งตรงกับสิ่งที่ backend ตรวจจริง
       if (item?.whNeedsSerial || item?.expectedSerialNo) {
-        serialNo = firstToken(await scanStep({
+        serialNo = serialToken(await scanStep({
           title: `${item.label} — สแกน S/N`,
           html: `${mcHint}<div class="scan-popup-hint">P/N: <b>${escapeHtml(partNo)}</b></div>`,
           confirmText: 'บันทึก',
-          validate: v => firstToken(v) === partNo ? 'ค่า S/N ซ้ำกับ P/N' : undefined
+          // เตือนเฉพาะตอนที่ค่าที่ได้ออกมาเท่ากับ P/N จริง ๆ
+          // ยิงบาร์โค้ดรวมซ้ำจะได้วรรคที่สองซึ่งเป็น S/N จึงไม่เข้าเงื่อนไขนี้
+          validate: v => serialToken(v) === partNo ? 'ค่า S/N ซ้ำกับ P/N' : undefined
         }));
         if (!serialNo) return;
       }
