@@ -87,6 +87,11 @@ type LicenseItem struct {
 	LockReason string `gorm:"-"`
 }
 
+// ใบนำเข้ามีอายุ 6 เดือนนับจากวันออกใบ
+//
+// บวกเดือนแบบ clamp สิ้นเดือนเสมอ (ใช้ AddMonthsClamped) ไม่ใช่ AddDate ตรง ๆ
+// ออกใบ 31 ส.ค. ต้องได้ 28 ก.พ. ไม่ใช่ 3 มี.ค. ซึ่ง AddDate จะล้นไปเดือนถัดไป
+// กติกาเดียวกับใบนำออก จะได้ไม่มีสองมาตรฐานในระบบเดียว
 const ImportLicenseValidityMonths = 6
 
 // ApplyRemarkStatus ตั้งสถานะ "เสร็จสิ้น" จากช่องหมายเหตุ (Remark) ในไฟล์ Excel
@@ -117,7 +122,7 @@ func (m *LicenseItem) FillExpireDate() {
 	if m.ExpireDate != nil || m.IssueDate == nil {
 		return
 	}
-	exp := m.IssueDate.AddDate(0, ImportLicenseValidityMonths, 0)
+	exp := AddMonthsClamped(*m.IssueDate, ImportLicenseValidityMonths)
 	m.ExpireDate = &exp
 }
 
@@ -149,10 +154,10 @@ func (m *LicenseItem) ExportEffectiveExpireDate() *time.Time {
 
 // ExportLeadTimeDate: วันครบกำหนดยื่นขอต่ออายุใบนำออกใบนี้ต่อ กสทช.
 func (m *LicenseItem) ExportLeadTimeDate() *time.Time {
-	exp := m.ExportEffectiveExpireDate()
-	if exp == nil {
+	if m.ExportIssueDate == nil {
 		return nil
 	}
-	lead := SubtractBusinessDays(*exp, ExportLicenseLeadDays)
+	// นับจากวันออกใบไปข้างหน้า 15 วันปฏิทิน — กติกาเดียวกับหน้าเว็บและเมล
+	lead := m.ExportIssueDate.AddDate(0, 0, ExportLicenseLeadDays)
 	return &lead
 }

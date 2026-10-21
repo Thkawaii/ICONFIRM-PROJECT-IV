@@ -477,18 +477,34 @@ func buildExportRows(today time.Time, withinDays int, alertIdx licenseAlertIndex
 			continue
 		}
 
-		leadDay := models.SubtractBusinessDays(expDay, models.ExportLicenseLeadDays)
-		row.LeadDate = &leadDay
-		row.LeadDaysLeft = models.DaysBetween(today, leadDay)
-		if row.LeadDaysLeft < 0 {
-			row.LeadStatus = mailer.LeadOverdue
-			counts.LeadOverdue++
-		} else {
-			row.LeadStatus = mailer.LeadDue
-			row.LeadUrgent = row.LeadDaysLeft <= models.ExportLicenseLeadWarnDays
-			if row.LeadUrgent {
-				counts.LeadDueSoon++
+		// นับ 15 วันปฏิทินจากวันออกใบนำออก ให้ตรงกับที่หน้าเว็บแสดง
+		// ถ้าสองที่คิดคนละแบบ เมลจะบอกวันหนึ่ง หน้าจอบอกอีกวัน
+		//
+		// r คือแถวใบนำออกจากหน้า overview โดยตรง r.IssueDate จึงเป็นวันออกใบนำออก
+		// ไม่ใช่ของใบนำเข้า
+		//
+		// ไม่มีวันออกใบ = คิดกำหนดยื่นไม่ได้ ข้ามไป ดีกว่าเดาจากวันหมดอายุ
+		// เพราะเดือนยาวไม่เท่ากัน เดาแล้วจะคลาดกับหน้าเว็บ
+		if r.IssueDate != nil {
+			issDay := time.Date(r.IssueDate.Year(), r.IssueDate.Month(), r.IssueDate.Day(), 0, 0, 0, 0, today.Location())
+			leadDay := issDay.AddDate(0, 0, models.ExportLicenseLeadDays)
+			row.LeadDate = &leadDay
+			row.LeadDaysLeft = models.DaysBetween(today, leadDay)
+			if row.LeadDaysLeft < 0 {
+				row.LeadStatus = mailer.LeadOverdue
+				counts.LeadOverdue++
+			} else {
+				row.LeadStatus = mailer.LeadDue
+				row.LeadUrgent = row.LeadDaysLeft <= models.ExportLicenseLeadWarnDays
+				if row.LeadUrgent {
+					counts.LeadDueSoon++
+				}
 			}
+		} else {
+			// ไม่มีวันออกใบในไฟล์ = คิดกำหนดยื่นไม่ได้
+			// ยังส่งแถวนี้ในเมล เพราะเรื่องวันหมดอายุยังต้องแจ้ง
+			// แค่เว้นช่องกำหนดยื่นไว้ ดีกว่าเดาจากวันหมดอายุแล้วคลาดกับหน้าเว็บ
+			row.LeadStatus = mailer.LeadNoDate
 		}
 
 		if row.Status == mailer.StatusExpired {

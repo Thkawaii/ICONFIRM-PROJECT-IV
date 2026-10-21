@@ -51,6 +51,9 @@ const (
 	// ข้อความมาตรฐานที่แสดงให้ WH เห็นตอนสแกน
 	FlowMsgSaved   = "บันทึกข้อมูลสำเร็จ"
 	FlowMsgInvalid = "ข้อมูลไม่ถูกต้อง"
+
+	// ยิงมาแล้วหาไม่เจอในทะเบียนเลย — คนละเรื่องกับค่าที่ไม่ตรง
+	FlowMsgNotInRegistry = "ยังไม่มีข้อมูลในระบบ"
 	// อ่าน QR มาไม่ครบ — คนละเรื่องกับข้อมูลไม่ตรง แค่ยิงซ้ำก็จบ
 	FlowMsgScanIncomplete = "อ่านบาร์โค้ด Kanban มาได้ไม่ครบ กรุณายิงซ้ำอีกครั้ง"
 )
@@ -953,6 +956,7 @@ func IssueFlowPart(c *gin.Context) {
 		scanned  string
 		expected string
 		reason   string
+		serial   string
 	}
 
 	var problems []string
@@ -961,12 +965,12 @@ func IssueFlowPart(c *gin.Context) {
 	if item.ExpectedPartNo != "" && scannedPN != "" && !SameCode(scannedPN, item.ExpectedPartNo) {
 		msg := expectedFrom + " กำหนด P/N " + item.ExpectedPartNo + " แต่สแกนได้ " + scannedPN
 		problems = append(problems, msg)
-		wrongs = append(wrongs, wrongField{"P/N", scannedPN, item.ExpectedPartNo, msg})
+		wrongs = append(wrongs, wrongField{"P/N", scannedPN, item.ExpectedPartNo, msg, ""})
 	}
 	if item.ExpectedSerialNo != "" && scannedSN != "" && !SameCode(scannedSN, item.ExpectedSerialNo) {
 		msg := expectedFrom + " กำหนด S/N# " + item.ExpectedSerialNo + " แต่สแกนได้ " + scannedSN
 		problems = append(problems, msg)
-		wrongs = append(wrongs, wrongField{"S/N#", scannedSN, item.ExpectedSerialNo, msg})
+		wrongs = append(wrongs, wrongField{"S/N#", scannedSN, item.ExpectedSerialNo, msg, ""})
 	}
 
 	// เทียบกับทะเบียนใบอนุญาตนำเข้า — เฉพาะของที่สแกน S/N รายกล่อง (IT Controller)
@@ -975,12 +979,16 @@ func IssueFlowPart(c *gin.Context) {
 	// ที่เคยระบุไว้เลิกใช้แล้ว) ความถูกต้องจึงมาจากทะเบียนใบนำเข้าแทน:
 	// กล่องที่สแกนต้องมีอยู่จริงในทะเบียน และต้องอนุญาตให้ส่งไปประเทศเดียวกับแผน
 	var licenseItem *models.LicenseItem
+	// ไม่พบในทะเบียนเลย เป็นคนละเรื่องกับค่าไม่ตรง จึงขึ้นข้อความคนละแบบ
+	notInRegistry := false
+
 	if component == ComponentITC && scannedSN != "" {
 		chk := checkScanAgainstLicense(scannedPN, scannedSN, machine.Customer)
 		licenseItem = chk.Item
 		if chk.Problem != "" {
 			problems = append(problems, chk.Problem)
-			wrongs = append(wrongs, wrongField{chk.Field, chk.Scanned, chk.Expected, chk.Problem})
+			wrongs = append(wrongs, wrongField{chk.Field, chk.Scanned, chk.Expected, chk.Problem, chk.Serial})
+			notInRegistry = chk.NotFound
 		}
 	}
 
@@ -1001,11 +1009,36 @@ func IssueFlowPart(c *gin.Context) {
 			})
 		}
 
+		// ส่งคู่ค่าที่ไม่ตรงกลับไปด้วย ให้หน้าเว็บเลือกแสดงเองว่าจะโชว์ช่องไหน
+		//
+		// ไม่ส่งเป็นประโยคยาว เพราะหน้าเว็บจะจัดรูปแบบเอง (ป้ายสีแดง สองบรรทัด)
+		// ถ้าส่งเป็นประโยคสำเร็จรูป หน้าเว็บจะแยกค่าออกมาจัดเองไม่ได้
+		wrongList := make([]gin.H, 0, len(wrongs))
+		for _, w := range wrongs {
+			wrongList = append(wrongList, gin.H{
+				"field":    w.field,
+				"scanned":  w.scanned,
+				"expected": w.expected,
+				"serial":   w.serial,
+			})
+		}
+
+		// ยังไม่มีข้อมูลในระบบ ≠ ข้อมูลไม่ถูกต้อง
+		//
+		// อย่างแรกแปลว่าระบบยังไม่รู้จักของชิ้นนี้ ต้องไปอัปไฟล์หรือยิงใหม่ให้ถูกบรรทัด
+		// อย่างหลังแปลว่าระบบรู้จัก แต่ของผิดตัว
+		// ถ้าใช้ข้อความเดียวกัน คนหน้างานจะไล่หาสาเหตุผิดทาง
+		msg := FlowMsgInvalid
+		if notInRegistry {
+			msg = FlowMsgNotInRegistry
+		}
+
 		c.JSON(200, gin.H{
 			"matched": false,
 			"status":  FlowStatusMismatch,
-			"message": FlowMsgInvalid,
+			"message": msg,
 			"detail":  strings.Join(problems, " · "),
+			"wrong":   wrongList,
 		})
 		return
 	}
@@ -1023,11 +1056,24 @@ func IssueFlowPart(c *gin.Context) {
 			Reason:      label + " นี้ถูกจ่ายให้เครื่อง " + owner + " ไปแล้ว",
 		})
 
+		// ส่งคู่ค่าเหมือนกรณีประเทศไม่ตรง ให้หน้าเว็บแสดงเป็นป้ายได้
+		//
+		//   เครื่องที่เลือก   SK2101002
+		//   จ่ายให้ไปแล้ว     SK2101001
+		//
+		// เป็นอีกกรณีที่คนหน้างานมองด้วยตาไม่เห็น กล่องอยู่ในมือแต่ไม่รู้ว่า
+		// เคยถูกจ่ายให้ใครไปแล้ว ถ้าบอกแค่ "ข้อมูลไม่ถูกต้อง" จะไปหากล่องใหม่
+		// ทั้งที่ของจริงคือต้องไปดูว่าเครื่องนั้นได้ของไปแล้วหรือยัง
 		c.JSON(200, gin.H{
 			"matched": false,
 			"status":  FlowStatusMismatch,
 			"message": FlowMsgInvalid,
 			"detail":  label + " นี้ถูกจ่ายให้เครื่อง " + owner + " ไปแล้ว",
+			"wrong": []gin.H{{
+				"field":    "ของถูกใช้แล้ว",
+				"scanned":  machineNo,
+				"expected": owner,
+			}},
 		})
 		return
 	}

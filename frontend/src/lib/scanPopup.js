@@ -239,15 +239,35 @@ function escapeHtml(str) {
   })[ch]);
 }
 export function scanErrorAlert(text, {
-  hint
+  hint,
+  rows
 } = {}) {
   // hint (เช่น "กรุณาติดต่อ ADMIN") ต่อท้ายข้อความเป็นบรรทัดเดียวกัน ไม่มีกล่องสี/ไอคอน
   const msg = String(text || '').trim();
   const full = hint && !msg.includes(hint) ? `${msg} ${hint}` : msg;
+
+  // rows = คู่ค่าที่ไม่ตรงกัน แสดงเป็นป้ายใต้ข้อความหลัก
+  //
+  //   Daily_Plan(PCP)         Indonesia
+  //   ใบอนุญาตส่งออก(LOG)      Malaysia
+  //
+  // บอกแค่ "ข้อมูลไม่ถูกต้อง" คนหน้างานจะเดาว่าหยิบผิดกล่อง แล้วไปหยิบใหม่มายิงซ้ำ
+  // ซึ่งไม่ผ่านอีก เพราะปัญหาอยู่ที่ไฟล์ ไม่ได้อยู่ที่กล่อง
+  // เห็นสองค่าวางคู่กันจะรู้ทันทีว่าต้องไปแก้ที่ไหน
+  const list = Array.isArray(rows) ? rows.filter(r => r && r.label && r.value) : [];
+  const detail = list.length ? `
+    <div class="scan-error-rows">
+      ${list.map(r => `
+        <div class="scan-error-row">
+          <span class="scan-error-key">${escapeHtml(r.label)}</span>
+          <span class="scan-error-val">${escapeHtml(r.value)}</span>
+        </div>`).join('')}
+    </div>` : '';
+
   return Swal.fire({
     icon: 'error',
     title: 'เกิดข้อผิดพลาด',
-    html: `<div class="scan-error-text">${escapeHtml(full)}</div>`,
+    html: `<div class="scan-error-text">${escapeHtml(full)}</div>${detail}`,
     confirmButtonText: 'ตกลง'
   });
 }
