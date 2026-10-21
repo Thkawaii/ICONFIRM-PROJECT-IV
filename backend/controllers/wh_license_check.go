@@ -42,6 +42,14 @@ type licenseScanCheck struct {
 	Scanned  string
 	Expected string
 
+	// NotFound = ไม่พบในทะเบียนเลย (ต่างจาก "พบแต่ค่าไม่ตรง")
+	// ใช้เลือกข้อความที่จะขึ้นหน้าจอ
+	NotFound bool
+
+	// Serial = S/N ที่ยิงมา เก็บไว้ให้หน้าเว็บบอกได้ว่า
+	// "S/N ตัวนี้ใช้กับ P/N ตัวไหน" ตอนที่ P/N ไม่ตรง
+	Serial string
+
 	// Item = แถวในทะเบียนที่จับคู่ได้ (nil = ไม่เจอ)
 	Item *models.LicenseItem
 }
@@ -87,10 +95,17 @@ func checkScanAgainstLicense(scannedPN, scannedSN, planCountry string) licenseSc
 
 	item := licenseItemBySerial(scannedSN)
 	if item == nil {
+		// ใช้ Field ของตัวเอง ไม่ใช่ "S/N#" เพื่อแยกจากกรณี "มีในทะเบียนแต่ไม่ตรง"
+		//
+		// สองอย่างนี้คนละเรื่องกันสิ้นเชิง
+		//   ไม่พบในทะเบียน   ยังไม่ได้อัปไฟล์ หรือยิงเลขผิดบรรทัดบนสติกเกอร์
+		//   มีแต่ไม่ตรง      ของผิดตัวจริง
+		// ถ้าใช้ชื่อช่องเดียวกัน หน้าเว็บจะแยกไม่ออกว่าควรบอกคนหน้างานยังไง
 		return licenseScanCheck{
-			Problem: "ไม่พบ S/N " + scannedSN + " ในทะเบียนใบอนุญาตนำเข้า — ตรวจว่าอัปโหลดบัญชีแสดงหมายเลขเครื่องของล็อตนี้แล้วหรือยัง",
-			Field:   "S/N#",
-			Scanned: scannedSN,
+			Problem:  "ไม่พบ S/N " + scannedSN + " ในทะเบียนใบอนุญาตนำเข้า — ตรวจว่าอัปโหลดบัญชีแสดงหมายเลขเครื่องของล็อตนี้แล้วหรือยัง",
+			Field:    "ไม่พบในทะเบียน",
+			Scanned:  scannedSN,
+			NotFound: true,
 		}
 	}
 
@@ -103,6 +118,7 @@ func checkScanAgainstLicense(scannedPN, scannedSN, planCountry string) licenseSc
 			Field:    "P/N",
 			Scanned:  scannedPN,
 			Expected: item.PartNo,
+			Serial:   item.MachineNo,
 			Item:     item,
 		}
 	}

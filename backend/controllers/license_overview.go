@@ -724,7 +724,7 @@ func collectBaseLicenses() map[string]*baseLicense {
 		}
 		exp := imports[i].ExpireDate
 		if exp == nil && imports[i].IssueDate != nil {
-			e := imports[i].IssueDate.AddDate(0, models.ImportLicenseValidityMonths, 0)
+			e := models.AddMonthsClamped(*imports[i].IssueDate, models.ImportLicenseValidityMonths)
 			exp = &e
 		}
 		if exp != nil && (b.ExpireDate == nil || exp.After(*b.ExpireDate)) {
@@ -921,6 +921,17 @@ func collectBaseLicenses() map[string]*baseLicense {
 			if b.ExpireDate == nil {
 				b.ExpireDate = ledger[i].ExpireDate
 			}
+			// ไฟล์ไม่ได้กรอกวันหมดอายุ ให้คิดเอง = วันออกใบ + 1 เดือนปฏิทิน
+			//
+			// ใช้ AddMonthsClamped เพื่อกันเดือนที่สั้นกว่า
+			// ออกใบ 31 ม.ค. จะได้ 28/29 ก.พ. ไม่ใช่ 3 มี.ค.
+			//
+			// ถ้าไฟล์กรอกมาแล้วจะไม่ทับ เพราะวันในไฟล์คือวันที่กรมออกให้จริง
+			// ระบบไม่ควรไปเถียงเอกสาร
+			if b.ExpireDate == nil && b.IssueDate != nil {
+				e := models.AddMonthsClamped(*b.IssueDate, models.ExportLicenseValidityMonths)
+				b.ExpireDate = &e
+			}
 			if b.Country == "" {
 				b.Country = ledger[i].Country
 			}
@@ -1058,14 +1069,19 @@ type LicenseOverviewRow struct {
 // licenseStatusOf: สถานะของใบปัจจุบัน — ใช้ตรรกะเดิมของระบบ
 // fillExportLeadDate: เติมวันครบกำหนดยื่นขอต่ออายุให้ใบนำออก
 //
-// ใบนำออกมีอายุ 1 เดือน และต้องยื่นเข้าระบบ กสทช. ล่วงหน้า 15 วันทำการ
-// จึงนับถอยหลังจากวันหมดอายุแบบข้ามเสาร์-อาทิตย์
+// นับจาก "วันออกใบ" ไปข้างหน้า 15 วันปฏิทิน
+//
+// ไม่ได้นับถอยหลังจากวันหมดอายุ เพราะเดือนยาวไม่เท่ากัน
+// เดือน 31 วัน  ออกใบ 6 ต.ค.  ออกใบ+15 = 21 ต.ค.  แต่หมดอายุ-15 = 22 ต.ค.
+// เดือน 28 วัน  ออกใบ 10 ก.พ. ออกใบ+15 = 25 ก.พ.  แต่หมดอายุ-15 = 23 ก.พ.
+// สองวิธีให้ผลต่างกันทุกเดือนที่ไม่ใช่ 30 วัน จึงต้องยึดวันออกใบตามที่ตกลงกัน
+//
 // ใบที่ปิดงานแล้วไม่ต้องยื่นอีก จึงไม่ต้องคิดกำหนดให้
 func fillExportLeadDate(row *LicenseOverviewRow, now time.Time) {
-	if row.LicenseType != models.LicenseTypeExport || row.ExpiryDate == nil || row.Completed {
+	if row.LicenseType != models.LicenseTypeExport || row.IssueDate == nil || row.Completed {
 		return
 	}
-	lead := models.SubtractBusinessDays(*row.ExpiryDate, models.ExportLicenseLeadDays)
+	lead := row.IssueDate.AddDate(0, 0, models.ExportLicenseLeadDays)
 	row.LeadDate = &lead
 	d := models.DaysBetween(now, lead)
 	row.LeadDaysLeft = &d

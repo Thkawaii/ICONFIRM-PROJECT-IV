@@ -504,7 +504,7 @@ func GetImportLicenseAlerts(c *gin.Context) {
 			continue
 		}
 
-		expiry := g.IssueDate.AddDate(0, LicenseValidityMonths, 0)
+		expiry := models.AddMonthsClamped(*g.IssueDate, LicenseValidityMonths)
 		expDay := time.Date(expiry.Year(), expiry.Month(), expiry.Day(), 0, 0, 0, 0, now.Location())
 		row.ExpiryDate = &expDay
 		row.DaysLeft = int(expDay.Sub(today).Hours() / 24)
@@ -1294,7 +1294,7 @@ func UpdateImportLicenseItem(c *gin.Context) {
 			}
 			updates["issue_date"] = d
 			if d != nil {
-				exp := d.AddDate(0, models.ImportLicenseValidityMonths, 0)
+				exp := models.AddMonthsClamped(*d, models.ImportLicenseValidityMonths)
 				updates["expire_date"] = &exp
 			} else {
 				updates["expire_date"] = nil
@@ -1447,7 +1447,7 @@ func RenewImportLicense(c *gin.Context) {
 			base = *rows[i].IssueDate
 		}
 		newIssue := base.AddDate(0, 0, req.Days)
-		newExpire := newIssue.AddDate(0, LicenseValidityMonths, 0)
+		newExpire := models.AddMonthsClamped(newIssue, LicenseValidityMonths)
 
 		if err := config.DB.Model(&models.LicenseItem{}).
 			Where("id = ?", rows[i].ID).
@@ -1463,7 +1463,7 @@ func RenewImportLicense(c *gin.Context) {
 		updated++
 	}
 
-	newExpiry := rows[0].IssueDate.AddDate(0, LicenseValidityMonths, 0)
+	newExpiry := models.AddMonthsClamped(*rows[0].IssueDate, LicenseValidityMonths)
 
 	userID, userName := lookupUserName(c)
 	CreateAuditLog("IMPORT_LICENSE", 0, "renew",

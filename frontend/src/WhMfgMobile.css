@@ -1289,3 +1289,17 @@
     max-height: calc(100dvh - 120px);
   }
 }
+
+/* กล่องแจ้งข้อผิดพลาดบนมือถือ — จอแคบวางป้ายกับค่าคนละบรรทัด
+   ถ้าวางแถวเดียวกัน ชื่อป้ายยาว ๆ อย่าง "ใบอนุญาตส่งออก(LOG)" จะเบียดค่าจนตกบรรทัด */
+@media (max-width: 560px) {
+  .scan-error-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .scan-error-val {
+    text-align: left;
+  }
+}

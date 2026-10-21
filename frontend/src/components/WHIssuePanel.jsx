@@ -50,6 +50,65 @@ function serialToken(v) {
   const t = scanTokens(v);
   return t[1] || t[0] || '';
 }
+// ดึงคู่ค่าที่ชนกันออกจากผลตรวจ มาแสดงเป็นป้ายใต้ข้อความหลัก
+//
+// backend ส่ง wrong มาเป็นรายการช่องที่ผิด แต่ละช่องมี field / scanned / expected
+// เลือกมาเฉพาะกรณีที่ "คนหน้างานมองด้วยตาไม่เห็น" และแก้เองไม่ได้
+//
+//   ประเทศ           แผนบอกประเทศหนึ่ง ใบอนุญาตบอกอีกประเทศ
+//   ของถูกใช้แล้ว     กล่องนี้เคยจ่ายให้เครื่องอื่นไปแล้ว
+//
+// ส่วน P/N กับ S/N ไม่เอามาแสดง เพราะอ่านจากกล่องตรงหน้าได้เอง
+// ถ้าใส่รายละเอียดทุกกรณี คนจะเลิกอ่าน แล้วตอนที่สำคัญจริงจะถูกกดผ่านไป
+const WRONG_LABELS = {
+  'ประเทศ': ['Daily_Plan(PCP)', 'ใบอนุญาตส่งออก(LOG)'],
+  'ของถูกใช้แล้ว': ['เครื่องที่เลือก', 'จ่ายให้เครื่องนี้ไปแล้ว'],
+  'P/N': ['S/N', 'นี้ใช้กับ P/N']
+};
+
+function mismatchRows(res) {
+  const list = Array.isArray(res?.wrong) ? res.wrong : [];
+  for (const w of list) {
+    const key = String(w?.field || '').trim();
+    const labels = WRONG_LABELS[key];
+    if (!labels) continue;
+    // scanned = ค่าที่เจอตอนสแกน · expected = ค่าที่ควรจะเป็น
+    // ประเทศ       scanned คือของใบอนุญาต  expected คือของแผน
+    // ของถูกใช้แล้ว scanned คือเครื่องที่เลือก expected คือเครื่องที่ได้ของไป
+    // P/N ไม่ตรง — บอกว่า S/N ที่ยิงมาจริง ๆ แล้วคู่กับ P/N ตัวไหน
+    //
+    //   S/N              878270007402
+    //   นี้ใช้กับ P/N     YN22E00849FA
+    //
+    // ค่าที่ต้องแสดงคือ S/N (จาก serial) กับ P/N ที่ถูกต้อง (จาก expected)
+    // ไม่ใช่ P/N ที่ยิงผิดมา เพราะคนเห็นอยู่แล้วว่ายิงอะไรไป
+    if (key === 'P/N') {
+      const sn = String(w.serial || '').trim();
+      const right = String(w.expected || '').trim();
+      if (!sn || !right) continue;
+      return [{
+        label: labels[0],
+        value: sn
+      }, {
+        label: labels[1],
+        value: right
+      }];
+    }
+
+    const a = String(w.expected || '').trim();
+    const b = String(w.scanned || '').trim();
+    if (!a && !b) continue;
+    const pair = key === 'ประเทศ' ? [a, b] : [b, a];
+    return [{
+      label: labels[0],
+      value: pair[0] || '—'
+    }, {
+      label: labels[1],
+      value: pair[1] || '—'
+    }];
+  }
+  return undefined;
+}
 function fmtDate(value) {
   if (!value) return DASH;
   const d = new Date(value);
@@ -246,9 +305,16 @@ export default function WHIssuePanel() {
         okMsg = res.message || 'บันทึกข้อมูลสำเร็จ';
         await afterIssue(res.machine);
       } else {
-        // แสดงแค่ "ข้อมูลไม่ถูกต้อง" พอ — res.detail เป็นข้อมูลทางเทคนิคที่ยาวมาก
-        // (Part#, Product Spec, S/N ของทุกชิ้น) คนหน้างานอ่านไม่ทันและไม่ได้ใช้ตัดสินใจ
-        await scanErrorAlert(res?.message || 'ข้อมูลไม่ถูกต้อง');
+        // ข้อความหลักสั้นเหมือนเดิม แต่ถ้าผิดเรื่องประเทศ ให้โชว์สองค่าที่ชนกัน
+        //
+        // ไม่โชว์ res.detail ทั้งก้อน เพราะยาวและมีศัพท์เทคนิคปนเยอะ
+        // เลือกมาเฉพาะเรื่องประเทศ ซึ่งเป็นกรณีที่คนหน้างานแก้เองไม่ได้
+        // ต้องไปแก้ที่ไฟล์ ถ้าไม่บอกจะเสียเวลาหยิบกล่องใหม่มายิงซ้ำเรื่อย ๆ
+        //
+        // ผิดเรื่อง P/N หรือ S/N ยังขึ้นสั้น ๆ เหมือนเดิม เพราะคนตรวจเองได้จากกล่อง
+        await scanErrorAlert(res?.message || 'ข้อมูลไม่ถูกต้อง', {
+          rows: mismatchRows(res)
+        });
       }
     } catch (err) {
       scanClose();

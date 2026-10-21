@@ -2131,3 +2131,49 @@ button.qa-photo-thumb img {
     max-height: calc(100vh - 140px);
   }
 }
+
+/* คู่ค่าที่ไม่ตรงกันในกล่องแจ้งข้อผิดพลาด
+   ---------------------------------------------------------------------------
+   ใช้ตอนประเทศใน Daily plan ไม่ตรงกับใบอนุญาตนำออก
+
+       Daily_Plan(PCP)         Indonesia
+       ใบอนุญาตส่งออก(LOG)      Malaysia
+
+   วางป้ายซ้าย ค่าขวา ให้ค่าสองตัวเรียงตรงกันในแนวตั้ง
+   ตาจะกวาดลงมาเทียบได้ทันทีว่าต่างกันตรงไหน ซึ่งเป็นสิ่งเดียวที่คนต้องรู้ */
+.scan-error-rows {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  text-align: left;
+}
+
+.scan-error-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid #f0c2c2;
+  border-left: 4px solid #d64545;
+  border-radius: 0 9px 9px 0;
+  background: #fdf3f3;
+}
+
+.scan-error-key {
+  font-size: 12.5px;
+  color: #8a5a5a;
+  white-space: nowrap;
+}
+
+/* ค่าตัวจริงเด่นกว่าป้าย เพราะเป็นสิ่งที่ต้องเอาไปเทียบ
+   ใช้ monospace ให้ตัวอักษรกว้างเท่ากัน อ่านเทียบกันง่าย */
+.scan-error-val {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: #9b1c1c;
+  text-align: right;
+  word-break: break-word;
+}
