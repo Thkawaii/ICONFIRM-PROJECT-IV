@@ -40,6 +40,13 @@ func StartLicenseReconcileScheduler() {
 
 	go func() {
 		time.Sleep(licenseReconcileStartupDelay)
+
+		// ซ่อมวันหมดอายุที่เคยคำนวณล้นเดือนก่อน แล้วค่อยเช็คสถานะ
+		//
+		// ลำดับสำคัญ — ถ้าเช็คสถานะก่อน จะตัดสินว่าใบไหนหมดอายุ
+		// ด้วยวันที่ผิด แล้วอาจปิดใบที่ยังไม่ควรปิด
+		controllers.FixOverflowedExpireDates("ตอนเริ่มระบบ")
+
 		controllers.RunLicenseReconcile("ตอนเริ่มระบบ")
 
 		ticker := time.NewTicker(licenseReconcileInterval)

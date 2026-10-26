@@ -37,10 +37,12 @@ export function flowComponentLabel(code) {
 }
 
 // รายชื่อ MC# ที่ WH เลือกได้ (มาจากไฟล์ Planning WH — ชีต Engine_IT allocation)
-// รายชื่อ MC# ให้ WH เลือก
 //
-// date ว่าง = เฉพาะเครื่องที่ต้องจ่ายวันนี้ตามแผน Daily plan
-// date = 'all' = ทั้งหมด · date = 'YYYY-MM-DD' = ของวันนั้น
+// date ว่าง = เครื่องที่ต้องจ่ายตั้งแต่วันนี้ถึงอีก 7 วันข้างหน้า ตามแผน Daily plan
+// date = 'all' = ทั้งหมด · date = 'YYYY-MM-DD' = ของวันนั้นวันเดียว
+//
+// ช่วง 7 วันกำหนดไว้ฝั่ง backend (FlowPlanAheadDays ใน wh_mfg_flow.go)
+// ถ้าเปลี่ยนต้องแก้ข้อความใน WHIssuePanel.jsx ด้วย
 export function getFlowMachines(keyword, date) {
   const params = new URLSearchParams();
   if (keyword) params.set('keyword', keyword);
@@ -55,6 +57,13 @@ export function getFlowIssues() {
 }
 
 // แผนของเครื่อง 1 เครื่อง + ของที่จ่ายแล้ว + ที่ MFG ยืนยันแล้ว
+// หาเครื่องจาก S/N ที่ MFG ยิงมา — ย้อนจากบันทึกการจ่ายของ
+export function getFlowMachineBySerial(sn) {
+  const params = new URLSearchParams({
+    sn
+  });
+  return apiFetch(`/wh-flow/by-serial?${params.toString()}`);
+}
 export function getFlowMachine(machineNo) {
   return apiFetch(`/wh-flow/machines/${encodeURIComponent(machineNo)}`);
 }
@@ -92,6 +101,11 @@ export function cancelFlowIssue(id) {
 
 // MFG สแกน QR บน Kanban → ระบบเทียบ MC# + Product Spec + P/N กับ master_data
 // แล้วคืน MC#, Product Spec, ผลการเทียบ (specCheck / partCheck) และของที่ WH จ่ายมา
+// ยิง QR บน Kanban — หน้า MFG เลิกใช้แล้ว เปลี่ยนไปยิง S/N บนกล่องแทน
+//
+// เก็บไว้เพราะ endpoint ฝั่ง backend ยังอยู่ (POST /mfg-flow/kanban)
+// เผื่อวันหน้าอยากกลับไปใช้ หรือมีเครื่องบางสายที่ยังต้องยิง Kanban
+// ถ้าแน่ใจว่าไม่ใช้แล้วจริง ลบทั้งตัวนี้และ route ฝั่ง backend พร้อมกัน
 export function scanFlowKanban({
   qrCode = '',
   machineNo = ''

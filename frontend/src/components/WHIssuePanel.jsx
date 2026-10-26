@@ -61,7 +61,7 @@ function serialToken(v) {
 // ส่วน P/N กับ S/N ไม่เอามาแสดง เพราะอ่านจากกล่องตรงหน้าได้เอง
 // ถ้าใส่รายละเอียดทุกกรณี คนจะเลิกอ่าน แล้วตอนที่สำคัญจริงจะถูกกดผ่านไป
 const WRONG_LABELS = {
-  'ประเทศ': ['Daily_Plan(PCP)', 'ใบอนุญาตส่งออก(LOG)'],
+  'ประเทศ': ['ใบอนุญาต (LOG)', 'Daily Plan (PCP)'],
   'ของถูกใช้แล้ว': ['เครื่องที่เลือก', 'จ่ายให้เครื่องนี้ไปแล้ว'],
   'P/N': ['S/N', 'นี้ใช้กับ P/N']
 };
@@ -95,16 +95,19 @@ function mismatchRows(res) {
       }];
     }
 
-    const a = String(w.expected || '').trim();
-    const b = String(w.scanned || '').trim();
+    // ทั้งสองกรณีเรียงเหมือนกัน — scanned ขึ้นก่อน expected ทีหลัง
+    //
+    //   ประเทศ          scanned = ใบอนุญาต      expected = แผน
+    //   ของถูกใช้แล้ว    scanned = เครื่องที่เลือก expected = เครื่องที่ได้ของไป
+    const a = String(w.scanned || '').trim();
+    const b = String(w.expected || '').trim();
     if (!a && !b) continue;
-    const pair = key === 'ประเทศ' ? [a, b] : [b, a];
     return [{
       label: labels[0],
-      value: pair[0] || '—'
+      value: a || '—'
     }, {
       label: labels[1],
-      value: pair[1] || '—'
+      value: b || '—'
     }];
   }
   return undefined;
@@ -407,7 +410,7 @@ export default function WHIssuePanel() {
         <label className="upload-panel-label" htmlFor="wh-machine-select">
           Machine (MC#)
         </label>
-        <SelectField id="wh-machine-select" searchable searchPlaceholder="พิมพ์เลขเครื่องเพื่อค้นหา..." value={selected?.machineNo || ''} disabled={loading || detailLoading || machineOptions.length === 0} placeholder={machineOptions.length === 0 ? 'วันนี้ไม่มีเครื่องต้องจ่าย' : '— เลือก MC# —'} options={machineOptions} onChange={v => v && openMachine(v, true)} />
+        <SelectField id="wh-machine-select" searchable searchPlaceholder="พิมพ์เลขเครื่องเพื่อค้นหา..." value={selected?.machineNo || ''} disabled={loading || detailLoading || machineOptions.length === 0} placeholder={machineOptions.length === 0 ? 'ไม่มีเครื่องต้องจ่ายใน 7 วันข้างหน้า' : '— เลือก MC# —'} options={machineOptions} onChange={v => v && openMachine(v, true)} />
       </div>
 
       {/* สองชีตในไฟล์แผนบอกไม่ตรงกัน — ไม่บล็อกการจ่ายของ แต่ต้องให้เห็น
