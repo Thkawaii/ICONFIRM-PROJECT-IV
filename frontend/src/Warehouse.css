@@ -2177,3 +2177,54 @@ button.qa-photo-thumb img {
   text-align: right;
   word-break: break-word;
 }
+
+/* กล่องตรวจค่าก่อนบันทึก (หน้า WH)
+   ---------------------------------------------------------------------------
+   เอาค่าที่ยิงมาวางให้อ่านก่อนกดยืนยัน ไม่ได้ตรวจว่าถูกหรือผิด
+
+   ใช้ monospace และตัวใหญ่กว่าปกติ เพราะสิ่งที่ต้องจับผิดคือตัวอักษรเดี่ยว ๆ
+   ที่หน้าตาคล้ายกัน — I กับ l กับ 1 · O กับ 0 — ฟอนต์ธรรมดาแยกไม่ออก */
+.scan-confirm-rows {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.scan-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 14px;
+  border: 1px solid #d9dee3;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.scan-confirm-key {
+  flex: 0 0 48px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.scan-confirm-val {
+  flex: 1;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #101828;
+  word-break: break-all;
+}
+
+/* จอแคบ ลดขนาดลงหน่อยแต่ยังใหญ่กว่าข้อความทั่วไป */
+@media (max-width: 560px) {
+  .scan-confirm-val {
+    font-size: 15.5px;
+  }
+  .scan-confirm-row {
+    padding: 10px 12px;
+  }
+}
