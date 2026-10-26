@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SelectField from './Selectfield.jsx';
 import PeriodRangePicker from './PeriodRangePicker.jsx';
 import { getFlowMachines, getFlowMachine, getFlowIssues, issueFlowPart } from '../api/whFlow.js';
-import { scanStep, scanSelect, scanLoading, scanClose, scanSuccessToast, scanErrorAlert } from '../lib/scanPopup.js';
+import { scanStep, scanSelect, scanLoading, scanClose, scanSuccessToast, scanErrorAlert, scanConfirmAlert } from '../lib/scanPopup.js';
 import { inPeriod } from '../lib/dateRange.js';
 import { toastError, toastSuccess } from '../lib/toast.js';
 import { CheckCircleIcon, ChevronDoubleLeftIcon, ChevronDoubleRightIcon, ChevronLeftIcon, ChevronRightIcon, CubeIcon, DocumentTextIcon, XMarkIcon } from './icons.jsx';
@@ -295,6 +295,33 @@ export default function WHIssuePanel() {
         }));
         if (!serialNo) return;
       }
+
+      // ให้ดูค่าที่ยิงมาก่อนบันทึก
+      //
+      // เครื่องสแกนอ่านพลาดได้ เช่น P/N ออกมาเป็น "ll" หรือตัวอักษรขาดไปบางตัว
+      // ของเดิมยิงเสร็จแล้วบันทึกทันที กว่าจะรู้ว่าผิดก็ต้องไปลบในฐานข้อมูล
+      //
+      // ขั้นนี้ไม่ได้ตรวจว่าถูกหรือผิด แค่เอาค่ามาวางให้อ่านก่อนกดยืนยัน
+      // ใช้ฟอนต์ monospace เพราะตัวอักษรที่สับสนง่าย (I l 1 · O 0) จะแยกออก
+      const confirmHtml = `${mcHint}
+        <div class="scan-confirm-rows">
+          <div class="scan-confirm-row">
+            <span class="scan-confirm-key">P/N</span>
+            <span class="scan-confirm-val">${escapeHtml(partNo)}</span>
+          </div>
+          ${serialNo ? `<div class="scan-confirm-row">
+            <span class="scan-confirm-key">S/N</span>
+            <span class="scan-confirm-val">${escapeHtml(serialNo)}</span>
+          </div>` : ''}
+        </div>`;
+      const ok = await scanConfirmAlert({
+        title: `${item.label} — ตรวจก่อนบันทึก`,
+        html: confirmHtml,
+        confirmText: 'ยืนยัน',
+        denyText: null,
+        cancelText: 'ยกเลิก'
+      });
+      if (ok !== 'yes') return;
 
       scanLoading('กำลังตรวจสอบ...');
       const res = await issueFlowPart({
