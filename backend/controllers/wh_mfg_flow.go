@@ -52,8 +52,6 @@ const (
 	FlowMsgSaved   = "บันทึกข้อมูลสำเร็จ"
 	FlowMsgInvalid = "ข้อมูลไม่ถูกต้อง"
 
-	// ยิงมาแล้วหาไม่เจอในทะเบียนเลย — คนละเรื่องกับค่าที่ไม่ตรง
-	FlowMsgNotInRegistry = "ยังไม่มีข้อมูลในระบบ"
 	// อ่าน QR มาไม่ครบ — คนละเรื่องกับข้อมูลไม่ตรง แค่ยิงซ้ำก็จบ
 	FlowMsgScanIncomplete = "อ่านบาร์โค้ด Kanban มาได้ไม่ครบ กรุณายิงซ้ำอีกครั้ง"
 )
@@ -546,7 +544,7 @@ func buildFlowMachineWith(machineNo string, alloc map[string]map[string]string,
 		// ไฟล์ Planning WH ที่เคยระบุว่าเครื่องคันไหนใช้กล่องไหนเลิกใช้แล้ว
 		// WH หยิบกล่องไหนก็ได้ที่ขออนุญาตส่งไปประเทศเดียวกับเครื่องคันนั้น
 		// ความถูกต้องไปตรวจตอนสแกนแทน โดยเทียบกับทะเบียนใบนำเข้า
-		// (ดู checkScanAgainstLicense) จึงต้องไม่ถูกตีเป็น "ยังไม่มีแผน"
+		// (ดู checkCountryAgainstLicense) จึงต้องไม่ถูกตีเป็น "ยังไม่มีแผน"
 		itcOpen := spec.Code == ComponentITC && item.ExpectedPartNo == "" && item.ExpectedSerialNo == ""
 
 		switch {
@@ -615,14 +613,32 @@ func flowPlanDate(allocRow map[string]string) *time.Time {
 	return parseLicenseDate(raw)
 }
 
+// FlowPlanAheadDays = WH เห็นเครื่องในแผนล่วงหน้ากี่วัน นับจากวันนี้
+//
+// 7 วันมาจากรอบการเบิกของหน้างาน ถ้าจะเปลี่ยนต้องแก้ข้อความบนหน้าเว็บด้วย
+// (WHIssuePanel.jsx) ไม่งั้นที่เขียนกับที่ทำจะไม่ตรงกันอีก
+const FlowPlanAheadDays = 7
+
+// startOfDay: ตัดเวลาทิ้ง เหลือแต่วันที่ตามโซนเวลาของเครื่อง
+//
+// ใช้ time.Date ไม่ใช่ Truncate(24h) เพราะ Truncate ตัดจากเวลา UTC
+// ที่ไทย (UTC+7) จะเพี้ยนไป 7 ชั่วโมง ของที่จ่ายก่อนบ่ายโมงจะถูกนับเป็นวันก่อนหน้า
+func startOfDay(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
 // GetFlowMachines: GET /wh-flow/machines — รายชื่อ MC# ให้ WH เลือก
 //
-// ค่าปริยายคือ "เฉพาะเครื่องที่ต้องจ่ายวันนี้" ตามวันที่ Main line ในแผน Daily plan
+// ค่าปริยายคือ "เครื่องที่ต้องจ่ายตั้งแต่วันนี้ไปจนถึงอีก 7 วันข้างหน้า"
+// ตามวันที่ Main line ในแผน Daily plan (Planning_PCP)
 //
-// แผนหนึ่งเดือนมีเครื่องเป็นร้อย ถ้าโชว์หมดทุกวัน คนหน้างานต้องไล่หาเองว่าอันไหน
-// ของวันนี้ ซึ่งเป็นจุดที่หยิบผิดเครื่องได้ง่าย วันนี้มี 11 เครื่องก็ควรเห็น 11 รายการ
+// WH เบิกของล่วงหน้า ไม่ได้จ่ายเฉพาะของที่ครบกำหนดวันนี้ ถ้าล็อกไว้วันเดียว
+// เครื่องที่ต้องจ่ายพรุ่งนี้จะเลือกไม่ได้เลย ต้องรอข้ามวัน ซึ่งไม่ตรงกับงานจริง
 //
-//	date=YYYY-MM-DD  ดูของวันอื่น (เช่นจ่ายล่วงหน้า หรือตามเก็บของเมื่อวาน)
+// แต่ก็ไม่โชว์ทั้งเดือน เพราะแผนหนึ่งเดือนมีเครื่องเป็นร้อย คนหน้างานต้องไล่หาเอง
+// ว่าอันไหนของช่วงนี้ ซึ่งเป็นจุดที่หยิบผิดเครื่องได้ง่าย
+//
+//	date=YYYY-MM-DD  ดูของวันนั้นวันเดียว (เช่นตามเก็บของเมื่อวาน)
 //	date=all         ดูทั้งหมด ไม่กรองวัน
 func GetFlowMachines(c *gin.Context) {
 	alloc := flowAllocIndex()
@@ -630,16 +646,20 @@ func GetFlowMachines(c *gin.Context) {
 
 	kw := strings.ToUpper(strings.TrimSpace(c.Query("keyword")))
 
-	// กรองตามวันจ่าย
+	// กรองตามวันจ่าย — ค่าว่างคือช่วง "วันนี้ ถึงอีก 7 วันข้างหน้า"
+	//
+	// นับรวมวันนี้ด้วย ช่วงจึงกว้าง 8 วันปฏิทิน (วันนี้ + อีก 7)
+	// ระบุ date มาเจาะจง = เอาวันนั้นวันเดียวเหมือนเดิม
 	dateQ := strings.ToLower(strings.TrimSpace(c.Query("date")))
-	var wantDay *time.Time
+	var fromDay, toDay *time.Time
 	if dateQ != "all" {
 		if dateQ == "" {
-			t := time.Now().Truncate(24 * time.Hour)
-			wantDay = &t
+			f := startOfDay(time.Now())
+			t := f.AddDate(0, 0, FlowPlanAheadDays)
+			fromDay, toDay = &f, &t
 		} else if d := parseLicenseDate(dateQ); d != nil {
-			t := d.Truncate(24 * time.Hour)
-			wantDay = &t
+			t := startOfDay(*d)
+			fromDay, toDay = &t, &t
 		}
 	}
 
@@ -654,13 +674,16 @@ func GetFlowMachines(c *gin.Context) {
 	out := make([]FlowMachine, 0, len(machines))
 	skippedByDate := 0
 	for _, mc := range machines {
-		if wantDay != nil {
+		if fromDay != nil {
 			d := flowPlanDate(flowAllocFor(alloc, mc))
 			// เครื่องที่ไม่มีวันจ่ายในแผน ยังโชว์ไว้เสมอ — ไม่ใช่ความผิดของคนหน้างาน
 			// ที่ไฟล์กรอกไม่ครบ ถ้าซ่อนไป ของจะค้างโดยไม่มีใครเห็น
-			if d != nil && !d.Truncate(24*time.Hour).Equal(*wantDay) {
-				skippedByDate++
-				continue
+			if d != nil {
+				day := startOfDay(*d)
+				if day.Before(*fromDay) || day.After(*toDay) {
+					skippedByDate++
+					continue
+				}
 			}
 		}
 		m := buildFlowMachine(mc, alloc, specs, "")
@@ -677,8 +700,11 @@ func GetFlowMachines(c *gin.Context) {
 	}
 
 	resp := gin.H{"rows": out, "total": len(out)}
-	if wantDay != nil {
-		resp["planDate"] = wantDay.Format("2006-01-02")
+	if fromDay != nil {
+		// planDate คงชื่อเดิมไว้เพื่อไม่ให้ของเก่าที่อ่านฟิลด์นี้พัง
+		resp["planDate"] = fromDay.Format("2006-01-02")
+		resp["planDateTo"] = toDay.Format("2006-01-02")
+		resp["planAheadDays"] = FlowPlanAheadDays
 		resp["hiddenByDate"] = skippedByDate
 	}
 	c.JSON(200, resp)
@@ -699,6 +725,51 @@ func GetFlowMachine(c *gin.Context) {
 		return
 	}
 	c.JSON(200, buildFlowMachine(machineNo, alloc, flowSpecIndex(), ""))
+}
+
+// GetFlowMachineBySerial: GET /wh-flow/by-serial?sn=... — หาเครื่องจาก S/N ที่ยิง
+//
+// MFG ยิงบาร์โค้ดบนกล่องแล้วได้ S/N มา แต่ระบบเก็บข้อมูลเป็นรายเครื่อง
+// จึงต้องย้อนจาก S/N ไปหาว่า WH จ่ายกล่องนี้ให้เครื่องไหน
+//
+// หาจากบันทึกการจ่ายของ (part_checks) เพราะนั่นคือที่เดียวที่ผูก S/N กับเครื่อง
+// ไม่ได้หาจากทะเบียนใบอนุญาต เพราะทะเบียนบอกแค่ว่ากล่องมีจริง
+// ไม่ได้บอกว่าถูกจ่ายให้เครื่องไหน
+//
+// เอาครั้งล่าสุดถ้ามีหลายรายการ เผื่อกล่องถูกเปลี่ยนระหว่างทาง
+func GetFlowMachineBySerial(c *gin.Context) {
+	sn := strings.TrimSpace(c.Query("sn"))
+	if sn == "" {
+		c.JSON(400, gin.H{"message": "กรุณาระบุ S/N"})
+		return
+	}
+
+	variants := CodeVariants(sn)
+	if len(variants) == 0 {
+		variants = []string{sn}
+	}
+
+	var row models.PartCheck
+	err := config.DB.
+		Where("sn IN ?", variants).
+		Where("match_status = ?", models.MatchStatusMatch).
+		Order("checked_datetime desc").First(&row).Error
+	if err != nil {
+		c.JSON(404, gin.H{
+			"message": "ยังไม่มีการจ่ายของสำหรับ S/N " + sn,
+		})
+		return
+	}
+
+	machineNo := strings.TrimSpace(row.MachineNo)
+	alloc := flowAllocIndex()
+	m := buildFlowMachine(machineNo, alloc, flowSpecIndex(), "")
+	c.JSON(200, gin.H{
+		"machine":   m,
+		"serialNo":  strings.TrimSpace(row.SN),
+		"partNo":    strings.TrimSpace(row.PN),
+		"component": strings.ToUpper(strings.TrimSpace(row.PartType)),
+	})
 }
 
 // FlowIssueRow: 1 แถวในตารางประวัติการจ่ายของ
@@ -975,20 +1046,24 @@ func IssueFlowPart(c *gin.Context) {
 
 	// เทียบกับทะเบียนใบอนุญาตนำเข้า — เฉพาะของที่สแกน S/N รายกล่อง (IT Controller)
 	//
-	// แผน Planning PCP ไม่ได้ระบุว่าเครื่องคันไหนต้องใช้กล่องไหน (ไฟล์ Planning WH
-	// ที่เคยระบุไว้เลิกใช้แล้ว) ความถูกต้องจึงมาจากทะเบียนใบนำเข้าแทน:
-	// กล่องที่สแกนต้องมีอยู่จริงในทะเบียน และต้องอนุญาตให้ส่งไปประเทศเดียวกับแผน
+	// แผน Planning PCP ไม่ได้ระบุว่าเครื่องคันไหนต้องใช้กล่องไหน
+	// ความถูกต้องที่ยังตรวจอยู่เหลือเรื่องเดียวคือประเทศปลายทาง
+	// และตรวจเฉพาะ Indonesia กับ Malaysia เท่านั้น (ดู checkCountryAgainstLicense)
 	var licenseItem *models.LicenseItem
-	// ไม่พบในทะเบียนเลย เป็นคนละเรื่องกับค่าไม่ตรง จึงขึ้นข้อความคนละแบบ
-	notInRegistry := false
 
+	// เทียบกับทะเบียนใบอนุญาตเฉพาะ Indonesia กับ Malaysia และเทียบแค่ประเทศ
+	//
+	// ไม่เทียบ P/N และไม่ปฏิเสธเมื่อหา S/N ในทะเบียนไม่เจอ
+	// เพราะหน้างานอ่าน P/N กับ S/N จากสติกเกอร์บนกล่องอยู่แล้ว
+	// สิ่งที่คนมองด้วยตาไม่เห็นคือประเทศปลายทางของใบอนุญาต จึงเหลือเช็คแค่นั้น
+	//
+	// ประเทศอื่นยิงอะไรมาก็บันทึก ไม่เทียบอะไรเลย
 	if component == ComponentITC && scannedSN != "" {
-		chk := checkScanAgainstLicense(scannedPN, scannedSN, machine.Customer)
+		chk := checkCountryAgainstLicense(scannedSN, machine.Customer)
 		licenseItem = chk.Item
 		if chk.Problem != "" {
 			problems = append(problems, chk.Problem)
 			wrongs = append(wrongs, wrongField{chk.Field, chk.Scanned, chk.Expected, chk.Problem, chk.Serial})
-			notInRegistry = chk.NotFound
 		}
 	}
 
@@ -1023,15 +1098,10 @@ func IssueFlowPart(c *gin.Context) {
 			})
 		}
 
-		// ยังไม่มีข้อมูลในระบบ ≠ ข้อมูลไม่ถูกต้อง
-		//
-		// อย่างแรกแปลว่าระบบยังไม่รู้จักของชิ้นนี้ ต้องไปอัปไฟล์หรือยิงใหม่ให้ถูกบรรทัด
-		// อย่างหลังแปลว่าระบบรู้จัก แต่ของผิดตัว
-		// ถ้าใช้ข้อความเดียวกัน คนหน้างานจะไล่หาสาเหตุผิดทาง
+		// เหลือกรณีเดียวที่ปฏิเสธได้แล้ว คือประเทศไม่ตรง
+		// "ยังไม่มีข้อมูลในระบบ" ไม่ใช้อีกต่อไป เพราะ S/N ที่หาไม่เจอในทะเบียน
+		// ถือว่าผ่าน ไม่ได้ถือว่าผิด
 		msg := FlowMsgInvalid
-		if notInRegistry {
-			msg = FlowMsgNotInRegistry
-		}
 
 		c.JSON(200, gin.H{
 			"matched": false,

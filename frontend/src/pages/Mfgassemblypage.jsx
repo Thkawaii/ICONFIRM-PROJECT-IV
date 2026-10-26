@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getMFGAssemblies, deleteMFGAssembly, uploadMFGAssemblyPhoto } from '../api/mfgAssembly.js';
-import { scanFlowKanban, confirmFlowAssembly, flowComponentLabel } from '../api/whFlow.js';
+import { getFlowMachineBySerial, confirmFlowAssembly, flowComponentLabel } from '../api/whFlow.js';
 import { API_BASE_URL } from '../api/client.js';
 import { confirmDelete, toastSuccess, toastError } from '../lib/toast.js';
 import { inPeriod } from '../lib/dateRange.js';
@@ -30,6 +30,13 @@ function escapeHtml(v) {
     '"': '&quot;',
     "'": '&#39;'
   })[ch]);
+}
+// บาร์โค้ดบนกล่องใส่ P/N กับ S/N ไว้ด้วยกัน คั่นด้วยช่องว่าง
+//   "YN22E00849FA 878280001602"
+// ขั้นสแกน S/N เอาวรรคที่สอง ถ้ามีค่าเดียวก็ใช้ค่านั้น
+function serialToken(v) {
+  const t = String(v || '').trim().split(/[\s,;|]+/).filter(Boolean);
+  return t[1] || t[0] || '';
 }
 function firstToken(v) {
   if (!v) return '';
@@ -204,68 +211,58 @@ export default function MFGAssemblyPage() {
 
   // ขั้นที่ 1 — Scan Kanban: เทียบ MC# + Product Spec + P/N กับ master_data
   //             แล้วอ่านของที่ WH จ่ายมาให้เครื่องนี้
-  async function runKanbanScan(presetCode = '') {
+  // MFG ยิง S/N ของกล่อง แล้วระบบย้อนไปหาว่า WH จ่ายให้เครื่องไหน
+  //
+  // เปลี่ยนจากเดิมที่ยิง QR บน Kanban เพราะ
+  //   กล่องมีบาร์โค้ดติดมาอยู่แล้ว ไม่ต้องพิมพ์ Kanban เพิ่ม
+  //   ของที่ต้องยืนยันคือกล่องที่ถืออยู่ ไม่ใช่กระดาษที่แขวนกับเครื่อง
+  //
+  // บาร์โค้ดบนกล่องยิงได้ "YN22E00849FA 878280001602"
+  // ขั้นนี้เอาวรรคหลังซึ่งเป็น S/N (ดู serialToken)
+  //
+  // ระบบไม่ตัดสินถูกผิดให้ แค่ดึงข้อมูลที่ WH จ่ายมาแสดง
+  // แล้วให้คนดูเองว่าตรงกับของในมือไหม
+  async function runSerialScan(presetCode = '') {
     if (busyRef.current) return;
     busyRef.current = true;
     setScanBusy(true);
     try {
-      let qrCode = String(presetCode || '').trim();
-      if (!qrCode) {
-        qrCode = await scanStep({
-          title: 'Scan Kanban',
+      let raw = String(presetCode || '').trim();
+      if (!raw) {
+        raw = await scanStep({
+          title: 'สแกน S/N',
           confirmText: 'ตรวจสอบ'
         });
-        if (!qrCode) return;
-        qrCode = qrCode.trim();
+        if (!raw) return;
       }
+      const serialNo = serialToken(raw);
+      if (!serialNo) return;
+
       scanLoading('กำลังอ่านของที่ WH จ่ายมา...');
       let res = null;
       try {
-        res = await scanFlowKanban({
-          qrCode
-        });
+        res = await getFlowMachineBySerial(serialNo);
       } catch (err) {
         scanClose();
-        await scanErrorAlert(friendlyError(err, 'ตรวจสอบ Kanban ไม่สำเร็จ'));
+        await scanErrorAlert(friendlyError(err, 'ยังไม่มีการจ่ายของสำหรับ S/N นี้'));
         return;
       }
       scanClose();
-      if (res && res.found === false) {
-        // แสดงแค่ "ข้อมูลไม่ถูกต้อง" พอ — res.detail เป็นคำอธิบายทางเทคนิคที่ยาวมาก
-        // (ชื่อไฟล์แผน, Product Spec, master_data) คนหน้างานอ่านไม่ทันและไม่ได้ใช้ตัดสินใจ
-        await scanErrorAlert(res.message || 'ข้อมูลไม่ถูกต้อง');
+
+      const machine = res?.machine;
+      if (!machine?.machineNo) {
+        await scanErrorAlert('ยังไม่มีการจ่ายของสำหรับ S/N นี้');
         return;
       }
-      // Product Spec ถูก แต่ master_data ยังไม่มีรุ่นนี้
-      //
-      // เตือนเฉพาะตอนที่มีของรอยืนยันที่ต้องพึ่ง master_data จริง ๆ
-      // คือ CW / CV / SM / MP / PH (source = cw_cv_its)
-      //
-      // ของเดิมเตือนทุกครั้งที่ master_data ไม่มีรุ่นนี้ ไม่ว่ากำลังจะยืนยันอะไร
-      // เวลาเครื่องนั้นเหลือแค่ IT Controller ให้ยืนยัน คนจะเจอหน้าต่างแดง
-      // บอกว่า master_data ไม่มี Product Spec แล้วพอกดปิดกลับทำต่อได้ปกติ
-      // อ่านแล้วงงว่าตกลงผิดหรือไม่ผิด และทำให้คำเตือนจริงถูกมองข้ามไปด้วย
-      //
-      // IT Controller ไม่ได้ใช้ master_data เลย — ความถูกต้องมาจากทะเบียนใบนำเข้า
-      // (ดู checkScanAgainstLicense) ส่วน Engine เทียบ P/N ที่ WH จ่ายมาตรง ๆ
-      const pendingNeedsMaster = (res?.machine?.items || []).some(it => it.source === 'cw_cv_its' && it.issued && !it.mfgConfirmed);
-      if (res?.specWarning && pendingNeedsMaster) {
-        // ข้อความสั้น ๆ พอ ไม่ต้องบอก Product Spec หรือชื่อตาราง
-        //
-        // ของเดิมยาวจนอ่านไม่ทันหน้าเครื่อง และศัพท์อย่าง master_data
-        // เป็นชื่อตารางในระบบ ไม่ใช่คำที่คนหน้างานใช้
-        //
-        // รายละเอียดยังอยู่ใน audit log ดูย้อนหลังได้ว่าขาด Product Spec ตัวไหน
-        await scanErrorAlert('ไม่พบข้อมูลในระบบ');
-      }
-      await runItemChecks(res?.machine, qrCode);
+      await runItemChecks(machine, serialNo);
     } finally {
       busyRef.current = false;
       setScanBusy(false);
       await loadRows();
     }
   }
-  fireRef.current = code => runKanbanScan(code);
+
+  fireRef.current = code => runSerialScan(code);
 
   // ขั้นที่ 2-4 — ไล่ถาม MFG ทีละรายการว่า Part# ที่ WH จ่ายมาถูกต้องไหม
   //   ถูกต้อง → (CW / CV / SM / MP / PH: สแกน S/N# ก่อน) → ถ่ายรูป → บันทึก
@@ -285,14 +282,13 @@ export default function MFGAssemblyPage() {
       }
       return;
     }
-    const kanban = parseKanbanParts(qrCode);
     for (const item of pending) {
       // CW / CV / SM / MP / PH — ระบบเทียบ Part# ให้แล้วตั้งแต่ตอน WH สแกน
       // MFG จึงไม่ต้องตัดสินซ้ำ เหลือแค่ถ่ายรูปของจริงเก็บไว้
       const autoChecked = item.source === 'cw_cv_its';
       const ok = await scanConfirmAlert({
         title: itemTitle(machine, item),
-        html: itemHtml(machine, item, kanban),
+        html: itemHtml(machine, item),
         confirmText: autoChecked ? 'ถ่ายรูป' : 'ถูกต้อง',
         denyText: autoChecked ? null : 'ไม่ตรง',
         cancelText: autoChecked ? 'ปิด' : null
@@ -307,6 +303,17 @@ export default function MFGAssemblyPage() {
   }
   // IT Controller: ใช้ชนิด IT ของเครื่องเป็นหัวข้อ เช่น IT(Satellite, iridium)
   // รายการอื่นใช้ชื่อรายการตามปกติ เช่น Engine / Counter Weight
+  // หัวกล่อง — IT Controller ใช้ชื่อรุ่นอุปกรณ์จาก Planning PCP แทนคำว่า "IT Controller"
+  //
+  // ค่ามาจากชีต Specification sheet ช่อง IT device เช่น
+  //   IT(Satellite, iridium)
+  //   IT(Mobile4G, high speed-H)
+  //   IT(Mobile4G, normal speed)
+  //
+  // ค่าพวกนี้มีจุลภาคอยู่ข้างใน แต่ไม่มีปัญหา เพราะอ่านจากเซลล์ในไฟล์
+  // ไม่ได้อ่านจาก QR ที่ใช้จุลภาคเป็นตัวคั่น
+  //
+  // ถ้าแผนไม่ได้ระบุรุ่นมา ใช้ชื่อชิ้นส่วนตามเดิม
   function itemTitle(machine, item) {
     if (item.component === 'ITC' && machine.itDevice) return machine.itDevice;
     return item.label;
@@ -317,33 +324,12 @@ export default function MFGAssemblyPage() {
   // เงื่อนไขแคบมาก เพื่อไม่ให้ไปโดนช่องอื่นที่ขึ้นต้นด้วยตัวเลข เช่น "800mm HD grouser shoe"
   const WEIGHT_HEAD = /[_#][0-9]{1,3}$/;
   const WEIGHT_TAIL = /^[0-9]{3}\s*(KGS?|KILOGRAMS?|TONN?E?S?|MT|T|G|LBS?)?$/i;
-  function mergeThousandSeparator(fields) {
-    const out = [];
-    for (let i = 0; i < fields.length; i++) {
-      let cur = fields[i];
-      while (i + 1 < fields.length && WEIGHT_HEAD.test(String(cur).trim()) && WEIGHT_TAIL.test(String(fields[i + 1]).trim())) {
-        cur = String(cur).trim() + String(fields[i + 1]).trim();
-        i++;
-      }
-      out.push(cur);
-    }
-    return out;
-  }
+  
 
   // ดึงค่า Part# ที่ติดมากับ QR ของ Kanban
   // หมายเหตุ: QR มี P/N ของ Counter Weight ช่องเดียว (ช่องที่ 7 เขียนเป็น "P/N_น้ำหนัก")
   // ส่วน CV / SM / MP / PH ไม่มีอยู่บน Kanban จึงดึงมาแสดงไม่ได้
-  function parseKanbanParts(qrCode) {
-    const f = mergeThousandSeparator(String(qrCode || '').split(','));
-    if (f.length < 7) return {};
-    // ช่อง CW เขียนติดกันสองอย่าง: "รหัส P/N" _ "น้ำหนักถ่วง" เช่น YN60C00942P1_4.3T
-    const cw = String(f[6] || '').trim();
-    const cut = cw.search(/[_#]/);
-    return {
-      CW: cut > 0 ? cw.slice(0, cut).trim() : cw,
-      CW_WEIGHT: cut > 0 ? cw.slice(cut + 1).trim() : ''
-    };
-  }
+  
 
   // หน่วยน้ำหนักที่เขียนได้หลายแบบ → หน่วยมาตรฐาน (กติกาเดียวกับ backend)
   // ไม่เขียนหน่วย = ตัน เพราะคอลัมน์ใน master_data คือ Weight (Tons)
@@ -408,36 +394,13 @@ export default function MFGAssemblyPage() {
     return w.value * rate;
   }
   // ตัวเลขเท่ากันไหม โดยไม่สนหน่วย — ใช้แยกกรณี "ตัวเลขเดียวกันแต่คนละหน่วย"
-  function sameWeightNumber(a, b) {
-    const x = parseWeight(a);
-    const y = parseWeight(b);
-    if (!x || !y) return false;
-    return Math.abs(x.value - y.value) < 0.005;
-  }
+  
   // น้ำหนักเดียวกันไหม — แปลงหน่วยให้ก่อนเทียบ (กติกาเดียวกับฝั่ง backend)
   //   6.2T = 6200KG  ← คนละหน่วย แต่น้ำหนักเท่ากัน
   //   6.2T ≠ 6.2KG   ← ต่างกัน 1000 เท่า
   // ยอมคลาดเคลื่อนได้ไม่ถึง 5 กก.
-  function sameTons(a, b) {
-    const ka = weightInKg(a);
-    const kb = weightInKg(b);
-    if (ka !== null && kb !== null) return Math.abs(ka - kb) < 5;
-
-    // หน่วยที่ระบบไม่รู้จัก — ต้องเขียนเหมือนกันเป๊ะและตัวเลขเท่ากัน
-    const x = parseWeight(a);
-    const y = parseWeight(b);
-    if (!x || !y || x.unit !== y.unit) return false;
-    return Math.abs(x.value - y.value) < 0.005;
-  }
-  function samePartNo(a, b) {
-    const clean = v => {
-      const s = String(v || '').trim().toUpperCase();
-      const cut = s.search(/[_#]/);
-      return (cut > 0 ? s.slice(0, cut) : s).replace(/[^A-Z0-9]/g, '');
-    };
-    const x = clean(a);
-    return x !== '' && x === clean(b);
-  }
+  
+  
   function itemHtml(machine, item, kanban = {}) {
     // cell = ช่อง label + ค่า 1 ช่อง · line = 1 บรรทัดเต็ม · pair = 2 ช่องในบรรทัดเดียว
     // สถานะติดไว้ที่ตัวค่าและตัวไอคอนเอง ไม่ใช่ที่แถว
@@ -452,85 +415,36 @@ export default function MFGAssemblyPage() {
       <div class="mfg-check-row${state ? ' mfg-check-' + state : ''}">
         ${cell(label, value, mono, state)}
       </div>`;
-    // Part# กับ Weight เป็นการตรวจของชิ้นเดียวกัน วางคู่กันในบรรทัดเดียวอ่านง่ายกว่า
-    const pair = (a, b) => `
-      <div class="mfg-check-row mfg-check-pair${a.state ? ' mfg-check-' + a.state : ''}">
-        <div class="mfg-check-cell">${cell(a.label, a.value, true, a.state)}</div>
-        <div class="mfg-check-cell">${cell(b.label, b.value, true, b.state)}</div>
-      </div>`;
 
-    const specCode = machine.partSpecCode || machine.specCode || '';
-    const fromMaster = item.source === 'cw_cv_its';
-
-    // ตอน WH สแกน ระบบเทียบกับ master_data ไปแล้ว จึงไม่ต้องโชว์ซ้ำ
-    // บรรทัดที่สองเอาค่าจาก Kanban มาเทียบแทน ให้เป็นการตรวจคนละแหล่ง
-    const kanbanPartNo = kanban[item.component] || '';
-    let state = '';
-    if (fromMaster && kanbanPartNo) {
-      state = samePartNo(item.issuedPartNo, kanbanPartNo) ? 'ok' : 'bad';
-    }
-
-    // Counter Weight เทียบน้ำหนักถ่วงอีกชั้น รหัส P/N ตรงอย่างเดียวไม่พอ
-    // เพราะ CW รหัสเดียวกันมีได้หลายน้ำหนัก
-    const kanbanWeight = item.component === 'CW' ? kanban.CW_WEIGHT || '' : '';
-    const masterWeight = item.expectedWeightTons || '';
-    let weightState = '';
-    if (masterWeight) {
-      weightState = kanbanWeight && sameTons(kanbanWeight, masterWeight) ? 'ok' : 'bad';
-    }
-    // ตัวเลขเท่ากันแต่คนละหน่วย (เช่น 6.2KG กับ 6.2T = ต่างกัน 1000 เท่า) — บอกให้ชัด
-    // ไม่งั้นคนอ่านจะมองผ่านว่า "ก็ 6.2 เหมือนกัน"
-    const wrongUnit = weightState === 'bad' && sameWeightNumber(kanbanWeight, masterWeight);
-    const kanbanWeightLabel = wrongUnit ? 'Weight (Kanban) — คนละหน่วย' : 'Weight (Kanban)';
-
-    // บรรทัดที่ระบบเทียบให้ — ของที่ WH จ่าย/master_data เทียบกับที่เขียนบน Kanban
-    const compareRows = masterWeight ? pair({
-      label: fromMaster ? 'Part# (WH จ่าย)' : 'P/N',
-      value: item.issuedPartNo,
-      state
-    }, {
-      // ป้ายในตารางเทียบ — ใช้คำว่า "ในระบบ" แทนชื่อตาราง
-      // ให้เข้าชุดกับคำเตือนที่เพิ่งเปลี่ยนเป็น "ไม่พบข้อมูลในระบบ"
-      label: 'น้ำหนักในระบบ',
-      value: masterWeight,
-      state: weightState
-    }) + pair({
-      label: 'Part# (Kanban)',
-      value: kanbanPartNo,
-      state
-    }, {
-      label: kanbanWeightLabel,
-      value: kanbanWeight || 'ไม่ได้เขียนน้ำหนักมา',
-      state: weightState
-    }) : line(fromMaster ? 'Part# (WH จ่าย)' : 'P/N', item.issuedPartNo, true, state) + (fromMaster && kanbanPartNo ? line('Part# (Kanban)', kanbanPartNo, true, state) : '');
-
-    // ของเดิมบอกผลการเทียบซ้ำกันสี่ทาง — พื้นเขียว แถบเขียวซ้ายมือ ตัวอักษรเขียว
-    // และวงกลมติ๊กถูกต่อท้ายทุกค่า ทั้งที่คำตอบที่คนหน้างานต้องการมีข้อเดียวคือ "ตรงไหม"
-    // จึงสรุปผลไว้ที่หัวกล่องจุดเดียว แล้วปล่อยให้ตัวเลขเป็นสีดำอ่านง่าย ๆ
-    // เหลือสีแดงไว้เฉพาะช่องที่ไม่ตรงจริง ๆ สายตาจะพุ่งไปที่นั่นทันที
-    const checkStates = [state, masterWeight ? weightState : ''].filter(Boolean);
-    const verdict = checkStates.length === 0 ? '' : checkStates.includes('bad') ? 'bad' : 'ok';
-    const verdictNote = verdict === 'bad' ? 'ดูช่องที่ขึ้นสีแดง' : masterWeight ? 'Part# และน้ำหนักตรงกับ Kanban' : 'Part# ตรงกับ Kanban';
-    const compareBlock = verdict ? `
-      <div class="mfg-cmp mfg-cmp-${verdict}">
-        <div class="mfg-cmp-head">
-          <i class="mfg-cmp-mark">${verdict === 'ok' ? '✓' : '✗'}</i>
-          <span class="mfg-cmp-title">${verdict === 'ok' ? 'ตรงกัน' : 'ไม่ตรงกัน'}</span>
-          <span class="mfg-cmp-note">${verdictNote}</span>
-        </div>
-        <div class="mfg-cmp-body">${compareRows}</div>
-      </div>` : compareRows;
-
+    // แสดงอย่างเดียว ไม่เทียบ ไม่ย้อมสี
+    //
+    // เลิกยิง Kanban แล้ว จึงไม่มีค่าจากอีกแหล่งมาเทียบ
+    // ระบบเอาของที่ WH จ่ายมาวางให้ดู แล้วคนเช็คกับของในมือเอง
+    // ถ้าย้อมสีทั้งที่ไม่ได้เทียบอะไร จะกลายเป็นชี้นำผิด ๆ
+    //
+    // ป้ายเขียนว่า "(WH จ่าย)" ทุกช่อง เพื่อบอกชัดว่านี่คือค่าที่บันทึกไว้
+    // ไม่ใช่ค่าที่อ่านจากของในมือ คนจะได้รู้ว่าต้องเอาไปเทียบเอง
     return `
       <div class="mfg-check-box">
-        ${line('MC#', machine.machineNo)}
-        ${specCode ? line('Product Spec', specCode) : ''}
+        ${line('MC# (Machine No.)', machine.machineNo)}
         ${line('ลูกค้า / ประเทศ', machine.customer, false)}
-        ${compareBlock}
-        ${item.issuedSerialNo ? line('S/N', item.issuedSerialNo) : ''}
+        ${line(itemPartLabel(item), item.issuedPartNo)}
+        ${line(itemSerialLabel(item), item.issuedSerialNo)}
         ${line('จ่ายโดย', item.issuedBy, false)}
       </div>`;
   }
+
+  // ป้ายของช่อง Part# และ S/N
+  //
+  // IT Controller ใช้คำว่า IT# กับ S/N# ตามที่หน้างานเรียก
+  // ชิ้นอื่นใช้ Part# กับ S/N ตามเดิม
+  function itemPartLabel(item) {
+    return item.component === 'ITC' ? 'IT# (WH จ่าย)' : 'Part# (WH จ่าย)';
+  }
+  function itemSerialLabel(item) {
+    return item.component === 'ITC' ? 'S/N# (WH จ่าย)' : 'S/N (WH จ่าย)';
+  }
+
   function contactWH(message, issuedBy) {
     const who = String(issuedBy || '').trim();
     return who ? `${message} กรุณาติดต่อ WH: ${who}` : `${message} กรุณาติดต่อ WH`;
@@ -700,17 +614,19 @@ export default function MFGAssemblyPage() {
       </div>
 
       <div className="pc-barcode-grid pc-barcode-grid--single">
-        <div className="pc-barcode-card pc-card-mc" role="button" tabIndex={0} title="Scan Kanban" onClick={() => !scanBusy && runKanbanScan()} onKeyDown={e => {
+        <div className="pc-barcode-card pc-card-mc" role="button" tabIndex={0} title="Scan Here" onClick={() => !scanBusy && runSerialScan()} onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          if (!scanBusy) runKanbanScan();
+          if (!scanBusy) runSerialScan();
         }
       }}>
-          <span className="pc-barcode-kind">Kanban</span>
+          {/* ป้ายมุมบอกว่ายิงอะไร — เปลี่ยนจาก Kanban เป็น S/N ตามวิธีทำงานใหม่
+              ถ้าปล่อยคำว่า Kanban ไว้ หน้างานจะไปหยิบกระดาษ Kanban มายิง */}
+          <span className="pc-barcode-kind">S/N</span>
           <div className="pc-barcode-icon">
             <QrCodeIcon />
           </div>
-          <div className="pc-barcode-title">{scanBusy ? 'กำลังตรวจสอบ...' : 'Scan Kanban'}</div>
+          <div className="pc-barcode-title">{scanBusy ? 'กำลังตรวจสอบ...' : 'Scan Here'}</div>
           <span className="pc-barcode-cta">{scanBusy ? 'กำลังตรวจสอบ...' : 'กดที่นี่เพื่อเริ่มสแกน'}</span>
         </div>
       </div>

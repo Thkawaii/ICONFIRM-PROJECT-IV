@@ -82,60 +82,6 @@ func licenseItemBySerial(serial string) *models.LicenseItem {
 	return nil
 }
 
-// checkScanAgainstLicense: เทียบ P/N + S/N ที่สแกน และประเทศปลายทาง กับทะเบียนใบนำเข้า
-//
-// planCountry = ประเทศของเครื่องที่กำลังจ่าย (คอลัมน์ Customer ในแผน Planning PCP)
-// ว่างได้ — ถ้าแผนไม่ได้ระบุประเทศไว้ จะข้ามการตรวจข้อ 3 แทนที่จะเดาว่าผิด
-func checkScanAgainstLicense(scannedPN, scannedSN, planCountry string) licenseScanCheck {
-	scannedSN = strings.TrimSpace(scannedSN)
-	scannedPN = strings.TrimSpace(scannedPN)
-	if scannedSN == "" {
-		return licenseScanCheck{}
-	}
-
-	item := licenseItemBySerial(scannedSN)
-	if item == nil {
-		// ใช้ Field ของตัวเอง ไม่ใช่ "S/N#" เพื่อแยกจากกรณี "มีในทะเบียนแต่ไม่ตรง"
-		//
-		// สองอย่างนี้คนละเรื่องกันสิ้นเชิง
-		//   ไม่พบในทะเบียน   ยังไม่ได้อัปไฟล์ หรือยิงเลขผิดบรรทัดบนสติกเกอร์
-		//   มีแต่ไม่ตรง      ของผิดตัวจริง
-		// ถ้าใช้ชื่อช่องเดียวกัน หน้าเว็บจะแยกไม่ออกว่าควรบอกคนหน้างานยังไง
-		return licenseScanCheck{
-			Problem:  "ไม่พบ S/N " + scannedSN + " ในทะเบียนใบอนุญาตนำเข้า — ตรวจว่าอัปโหลดบัญชีแสดงหมายเลขเครื่องของล็อตนี้แล้วหรือยัง",
-			Field:    "ไม่พบในทะเบียน",
-			Scanned:  scannedSN,
-			NotFound: true,
-		}
-	}
-
-	// ทะเบียนบางแถวอาจยังไม่มี PART NO. (ไฟล์เก่าที่อัปก่อนระบบเก็บช่องนี้)
-	// ข้ามไป ดีกว่าปฏิเสธการจ่ายของด้วยข้อมูลที่ยังไม่ครบ
-	if scannedPN != "" && strings.TrimSpace(item.PartNo) != "" &&
-		!SameCode(scannedPN, item.PartNo) {
-		return licenseScanCheck{
-			Problem:  "ทะเบียนใบนำเข้าระบุว่า S/N " + item.MachineNo + " คู่กับ P/N " + item.PartNo + " แต่สแกนได้ " + scannedPN,
-			Field:    "P/N",
-			Scanned:  scannedPN,
-			Expected: item.PartNo,
-			Serial:   item.MachineNo,
-			Item:     item,
-		}
-	}
-
-	if planCountry != "" && strings.TrimSpace(item.ExportCountry) != "" &&
-		!sameCountryName(planCountry, item.ExportCountry) {
-		return licenseScanCheck{
-			Problem:  "กล่องนี้ขออนุญาตส่งออกไป " + item.ExportCountry + " แต่เครื่องที่กำลังจ่ายตามแผนส่งไป " + planCountry,
-			Field:    "ประเทศ",
-			Scanned:  item.ExportCountry,
-			Expected: planCountry,
-			Item:     item,
-		}
-	}
-
-	return licenseScanCheck{Item: item}
-}
 
 // sameCountryName: ชื่อประเทศสองค่านี้หมายถึงที่เดียวกันหรือไม่
 //
@@ -147,4 +93,65 @@ func sameCountryName(a, b string) bool {
 		return strings.ToUpper(strings.Join(strings.Fields(s), " "))
 	}
 	return norm(a) == norm(b)
+}
+
+// ---------------------------------------------------------------------------
+// กติกาใหม่ตามที่หน้างานใช้จริง
+//
+//	Indonesia / Malaysia   เช็คอย่างเดียวว่า "ประเทศในใบอนุญาต" ตรงกับ
+//	                       "ประเทศในแผน Daily plan" ไหม
+//	                       ไม่เช็ค P/N และไม่เช็คว่า S/N มีในทะเบียนหรือไม่
+//
+//	ประเทศอื่น              ไม่เช็คอะไรเลย ยิงอะไรมาก็บันทึก
+//
+// เหตุผลคือมีแต่สองประเทศนี้ที่ทะเบียนใบอนุญาตครบพอจะเทียบได้
+// ประเทศอื่นยังไม่ได้ลงทะเบียนไว้ ถ้าเอาไปเทียบจะไม่ผ่านทั้งหมด
+// ทั้งที่ของถูกต้อง แล้วหน้างานจะทำงานไม่ได้เลย
+// ---------------------------------------------------------------------------
+
+// licenseCheckedCountries: ประเทศที่เทียบกับทะเบียนใบอนุญาต
+var licenseCheckedCountries = []string{"Indonesia", "Malaysia"}
+
+// countryNeedsLicenseCheck: ประเทศนี้ต้องเทียบกับใบอนุญาตไหม
+func countryNeedsLicenseCheck(planCountry string) bool {
+	p := strings.TrimSpace(planCountry)
+	if p == "" {
+		return false
+	}
+	for _, c := range licenseCheckedCountries {
+		if sameCountryName(p, c) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkCountryAgainstLicense: เทียบเฉพาะประเทศ
+//
+// ไม่พบ S/N ในทะเบียน = ผ่าน ไม่ใช่ไม่ผ่าน
+// เพราะไม่มีค่าให้เทียบ ไม่ได้แปลว่าของผิด
+// ถ้าปฏิเสธตรงนี้จะกลับไปเป็นปัญหาเดิมที่หน้างานยิงไม่ผ่านทั้งที่ของถูก
+func checkCountryAgainstLicense(scannedSN, planCountry string) licenseScanCheck {
+	scannedSN = strings.TrimSpace(scannedSN)
+	if scannedSN == "" || !countryNeedsLicenseCheck(planCountry) {
+		return licenseScanCheck{}
+	}
+
+	item := licenseItemBySerial(scannedSN)
+	if item == nil {
+		return licenseScanCheck{}
+	}
+
+	licCountry := strings.TrimSpace(item.ExportCountry)
+	if licCountry == "" || sameCountryName(planCountry, licCountry) {
+		return licenseScanCheck{Item: item}
+	}
+
+	return licenseScanCheck{
+		Problem:  "ใบอนุญาตระบุประเทศ " + licCountry + " แต่แผนระบุ " + planCountry,
+		Field:    "ประเทศ",
+		Scanned:  licCountry,
+		Expected: planCountry,
+		Item:     item,
+	}
 }

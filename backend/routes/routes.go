@@ -68,6 +68,8 @@ func SetupRoutes(r *gin.Engine) {
 		whFlow.GET("/machines", controllers.GetFlowMachines)
 		whFlow.GET("/issues", controllers.GetFlowIssues)
 		whFlow.GET("/machines/:machineNo", controllers.GetFlowMachine)
+		// MFG ยิง S/N แล้วย้อนไปหาเครื่องที่ WH จ่ายกล่องนั้นให้
+		whFlow.GET("/by-serial", controllers.GetFlowMachineBySerial)
 
 		issue := whFlow.Group("")
 		issue.Use(middleware.RoleMiddleware("WH", "LOG"))
