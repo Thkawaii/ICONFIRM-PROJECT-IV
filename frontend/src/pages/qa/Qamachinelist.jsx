@@ -412,7 +412,18 @@ export default function QAMachineList() {
         return columns.some(c => String(r[c.key] ?? '').toLowerCase().includes(q)) || String(r.component || '').toLowerCase().includes(q);
       }
       return true;
-    }).sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+      // เรียงล่าสุดขึ้นก่อน ทั้งตารางบนหน้าจอและไฟล์ Excel
+      //
+      // ทั้งสองอย่างใช้ชุดข้อมูลเดียวกัน (filtered) แก้ที่นี่ที่เดียวจึงตรงกันเสมอ
+      // ถ้าแยกเรียงคนละที่ วันหนึ่งจะกลายเป็นหน้าจอกับไฟล์เรียงไม่เหมือนกัน
+      //
+      // รายการที่ไม่มีวันที่ให้ไปอยู่ท้ายสุด ไม่ใช่ปนขึ้นมาข้างบน
+      // เพราะ new Date(0) คือปี 1970 ซึ่งเก่ากว่าทุกแถวอยู่แล้ว
+    }).sort((a, b) => {
+      const ta = a.date ? new Date(a.date).getTime() : 0;
+      const tb = b.date ? new Date(b.date).getTime() : 0;
+      return tb - ta;
+    });
   }, [sourceRows, columns, search, periodMode, periodAnchor, compFilter]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
