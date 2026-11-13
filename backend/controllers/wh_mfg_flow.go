@@ -614,10 +614,12 @@ func flowPlanDate(allocRow map[string]string) *time.Time {
 }
 
 // FlowPlanAheadDays = WH เห็นเครื่องในแผนล่วงหน้ากี่วัน นับจากวันนี้
+// FlowPlanBehindDays = WH ยังเห็น/จ่ายย้อนหลังได้กี่วัน นับจากวันนี้
 //
-// 7 วันมาจากรอบการเบิกของหน้างาน ถ้าจะเปลี่ยนต้องแก้ข้อความบนหน้าเว็บด้วย
+// 15 วันมาจากรอบการเบิกของหน้างาน ถ้าจะเปลี่ยนต้องแก้ข้อความบนหน้าเว็บด้วย
 // (WHIssuePanel.jsx) ไม่งั้นที่เขียนกับที่ทำจะไม่ตรงกันอีก
-const FlowPlanAheadDays = 7
+const FlowPlanAheadDays = 15
+const FlowPlanBehindDays = 15
 
 // startOfDay: ตัดเวลาทิ้ง เหลือแต่วันที่ตามโซนเวลาของเครื่อง
 //
@@ -629,7 +631,7 @@ func startOfDay(t time.Time) time.Time {
 
 // GetFlowMachines: GET /wh-flow/machines — รายชื่อ MC# ให้ WH เลือก
 //
-// ค่าปริยายคือ "เครื่องที่ต้องจ่ายตั้งแต่วันนี้ไปจนถึงอีก 7 วันข้างหน้า"
+// ค่าปริยายคือ "เครื่องที่ต้องจ่ายตั้งแต่ 15 วันย้อนหลัง ไปจนถึงอีก 15 วันข้างหน้า"
 // ตามวันที่ Main line ในแผน Daily plan (Planning_PCP)
 //
 // WH เบิกของล่วงหน้า ไม่ได้จ่ายเฉพาะของที่ครบกำหนดวันนี้ ถ้าล็อกไว้วันเดียว
@@ -646,16 +648,17 @@ func GetFlowMachines(c *gin.Context) {
 
 	kw := strings.ToUpper(strings.TrimSpace(c.Query("keyword")))
 
-	// กรองตามวันจ่าย — ค่าว่างคือช่วง "วันนี้ ถึงอีก 7 วันข้างหน้า"
+	// กรองตามวันจ่าย — ค่าว่างคือช่วง "15 วันย้อนหลัง ถึงอีก 15 วันข้างหน้า"
 	//
-	// นับรวมวันนี้ด้วย ช่วงจึงกว้าง 8 วันปฏิทิน (วันนี้ + อีก 7)
+	// นับรวมวันนี้ด้วย ช่วงจึงกว้าง 31 วันปฏิทิน (ย้อนหลัง 15 + วันนี้ + อีก 15)
 	// ระบุ date มาเจาะจง = เอาวันนั้นวันเดียวเหมือนเดิม
 	dateQ := strings.ToLower(strings.TrimSpace(c.Query("date")))
 	var fromDay, toDay *time.Time
 	if dateQ != "all" {
 		if dateQ == "" {
-			f := startOfDay(time.Now())
-			t := f.AddDate(0, 0, FlowPlanAheadDays)
+			today := startOfDay(time.Now())
+			f := today.AddDate(0, 0, -FlowPlanBehindDays)
+			t := today.AddDate(0, 0, FlowPlanAheadDays)
 			fromDay, toDay = &f, &t
 		} else if d := parseLicenseDate(dateQ); d != nil {
 			t := startOfDay(*d)
@@ -705,6 +708,7 @@ func GetFlowMachines(c *gin.Context) {
 		resp["planDate"] = fromDay.Format("2006-01-02")
 		resp["planDateTo"] = toDay.Format("2006-01-02")
 		resp["planAheadDays"] = FlowPlanAheadDays
+		resp["planBehindDays"] = FlowPlanBehindDays
 		resp["hiddenByDate"] = skippedByDate
 	}
 	c.JSON(200, resp)
