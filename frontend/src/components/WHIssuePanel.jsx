@@ -437,7 +437,7 @@ export default function WHIssuePanel() {
         <label className="upload-panel-label" htmlFor="wh-machine-select">
           Machine (MC#)
         </label>
-        <SelectField id="wh-machine-select" searchable searchPlaceholder="พิมพ์เลขเครื่องเพื่อค้นหา..." value={selected?.machineNo || ''} disabled={loading || detailLoading || machineOptions.length === 0} placeholder={machineOptions.length === 0 ? 'ไม่มีเครื่องต้องจ่ายใน 7 วันข้างหน้า' : '— เลือก MC# —'} options={machineOptions} onChange={v => v && openMachine(v, true)} />
+        <SelectField id="wh-machine-select" searchable searchPlaceholder="พิมพ์เลขเครื่องเพื่อค้นหา..." value={selected?.machineNo || ''} disabled={loading || detailLoading || machineOptions.length === 0} placeholder={machineOptions.length === 0 ? 'ไม่มีเครื่องต้องจ่ายในช่วง 15 วันย้อนหลัง ถึง 15 วันข้างหน้า' : '— เลือก MC# —'} options={machineOptions} onChange={v => v && openMachine(v, true)} />
       </div>
 
       {/* สองชีตในไฟล์แผนบอกไม่ตรงกัน — ไม่บล็อกการจ่ายของ แต่ต้องให้เห็น

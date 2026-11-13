@@ -38,10 +38,10 @@ export function flowComponentLabel(code) {
 
 // รายชื่อ MC# ที่ WH เลือกได้ (มาจากไฟล์ Planning WH — ชีต Engine_IT allocation)
 //
-// date ว่าง = เครื่องที่ต้องจ่ายตั้งแต่วันนี้ถึงอีก 7 วันข้างหน้า ตามแผน Daily plan
+// date ว่าง = เครื่องที่ต้องจ่าย 15 วันย้อนหลัง ถึงอีก 15 วันข้างหน้า ตามแผน Daily plan
 // date = 'all' = ทั้งหมด · date = 'YYYY-MM-DD' = ของวันนั้นวันเดียว
 //
-// ช่วง 7 วันกำหนดไว้ฝั่ง backend (FlowPlanAheadDays ใน wh_mfg_flow.go)
+// ช่วง 15 วันกำหนดไว้ฝั่ง backend (FlowPlanAheadDays / FlowPlanBehindDays ใน wh_mfg_flow.go)
 // ถ้าเปลี่ยนต้องแก้ข้อความใน WHIssuePanel.jsx ด้วย
 export function getFlowMachines(keyword, date) {
   const params = new URLSearchParams();
