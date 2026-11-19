@@ -24,8 +24,13 @@
   --teal-strong: var(--brand-600);
   --teal-soft: rgba(6, 224, 212, 0.12);
   --danger: #dc2626;
-  --font-display: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-display: 'Inter', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  /* รหัส/ซีเรียล ใช้ Inter ตัวเดียวกับทั้งระบบ (เลิกใช้ JetBrains Mono ที่ศูนย์มีขีดทับ) */
+  --font-mono: 'Inter', 'IBM Plex Sans Thai', ui-sans-serif, system-ui, sans-serif;
+
+  /* ปิด slashed zero / stylistic set ทั้งหมด -> เลข 0 เป็นวงรีมาตรฐาน อ่านง่าย
+     ประกาศซ้ำที่นี่เพราะ styles.css ไม่ได้อยู่ใน @layer จึงชนะกฎใน theme.css */
+  font-feature-settings: 'zero' 0, 'ss01' 0, 'ss02' 0, 'cv01' 0, 'cv05' 0, 'cv08' 0;
 }
 
 * {
@@ -473,7 +478,8 @@ a {
 }
 
 .mfg-check-value.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
 

@@ -269,7 +269,8 @@
     background: linear-gradient(180deg, #f9fbfd 0%, #f4f7fa 100%);
     border-bottom: 1px solid var(--wmx-line);
     border-left: 3px solid var(--brand-500, #06e0d4);
-    font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 14.5px;
     font-weight: 700;
     color: var(--wmx-ink);
@@ -346,9 +347,10 @@
     white-space: normal;
   }
 
-  /* ค่าที่เป็นรหัส — monospace อ่านทีละตัวอักษรได้ชัด */
+  /* ค่าที่เป็นรหัส — Inter + tabular-nums อ่านทีละตัวอักษรได้ชัด */
   .wmx .wh-table tbody td.il-mono {
-    font-family: var(--font-mono, ui-monospace, Menlo, Consolas, monospace);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 13.5px;
     font-weight: 600;
     letter-spacing: 0.2px;

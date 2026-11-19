@@ -185,7 +185,8 @@
    ไอคอนบอกได้แค่ว่าเสร็จหรือยัง ซึ่งคำตอบคือยัง อยู่แล้ว
    สีส้มให้ต่างจากติ๊กถูกสีเขียว แต่ไม่เด่นจนแย่งสายตาจากชื่อเครื่อง */
 .wh-mc-partial {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 11.5px;
   font-weight: 700;
   color: #a55f10;

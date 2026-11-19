@@ -7,7 +7,10 @@
 
 @theme {
   --font-sans: 'Inter', 'IBM Plex Sans Thai', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  /* รหัส/ซีเรียล/ตัวเลข ใช้ Inter เหมือนกันทั้งระบบ
+     เลิกใช้ JetBrains Mono เพราะเลข 0 เป็นแบบมีจุด/ขีดกลาง อ่านยาก
+     Inter ให้เลข 0 เป็นวงรีเปล่า ๆ ชัดเจน + tabular-nums ทำให้เลขกว้างเท่ากัน */
+  --font-mono: 'Inter', 'IBM Plex Sans Thai', ui-sans-serif, system-ui, sans-serif;
 
   --color-brand-50: #eafcfb;
   --color-brand-100: #cdf6f4;
@@ -42,6 +45,15 @@
 }
 
 @layer base {
+  /* ----- ตัวเลขทั้งระบบ -----
+     'zero' 0  = ปิดเลขศูนย์แบบมีขีดทับ (slashed zero)
+     'ss01' 0 / 'ss02' 0 = ปิด stylistic set ที่สลับรูปตัวเลข/ตัวอักษรของ Inter
+     'cv01'..= ปิด character variant ที่ทำให้ 0 1 l I เปลี่ยนรูป
+     ผลคือได้เลข 0 เป็นวงรีมาตรฐานตามรูปตัวอย่าง */
+  :root {
+    font-feature-settings: 'zero' 0, 'ss01' 0, 'ss02' 0, 'cv01' 0, 'cv05' 0, 'cv08' 0;
+  }
+
   body {
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
