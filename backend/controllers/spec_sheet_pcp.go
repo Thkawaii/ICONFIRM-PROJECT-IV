@@ -154,7 +154,6 @@ func readSpecSheetPCPSheets(fileHeader *multipart.FileHeader) ([][]string, bool,
 		return nil, false, err
 	}
 	var blocks []map[string]string
-	seen := map[string]bool{}
 	found := false
 	for _, sh := range sheets {
 		b := specPCPRows(sh.rows)
@@ -162,22 +161,19 @@ func readSpecSheetPCPSheets(fileHeader *multipart.FileHeader) ([][]string, bool,
 			continue
 		}
 		found = true
-		for _, row := range b {
-			key := NormalizeCodeValue(row["Machine"])
-			if key == "" || seen[key] {
-				continue
-			}
-			seen[key] = true
-			blocks = append(blocks, row)
-		}
+		blocks = append(blocks, b...)
 	}
 	if !found {
 		return nil, false, nil
 	}
-	return specPCPTable(blocks), true, nil
+	// เครื่องเดียวกันเขียนซ้ำ = เอาแถวล่างสุดของไฟล์ (ดู plan_latest_row.go)
+	return specPCPTable(keepLatestMachineBlocks(blocks)), true, nil
 }
 
 // flowSpecSheetIndex: MC# (normalize) → แถวข้อมูลจากชีต Planning MFG ที่อัปโหลดไว้
+//
+// เครื่องเดียวกันเจอหลายแถวให้เอา "แถวล่าสุด" (loadUploadRows เรียงตาม id)
+// ไม่ใช่แถวแรกที่เจอซึ่งเป็นแถวเก่าสุด
 func flowSpecSheetIndex() map[string]map[string]string {
 	out := map[string]map[string]string{}
 	for _, row := range loadUploadRows(models.DatasetSpecSheet) {
@@ -186,9 +182,7 @@ func flowSpecSheetIndex() map[string]map[string]string {
 		if key == "" {
 			continue
 		}
-		if _, ok := out[key]; !ok {
-			out[key] = row
-		}
+		out[key] = row
 	}
 	return out
 }

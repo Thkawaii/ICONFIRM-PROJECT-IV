@@ -201,7 +201,6 @@ func readPlanningSpecSheets(fileHeader *multipart.FileHeader) ([][]string, bool,
 		return nil, false, err
 	}
 	var blocks []map[string]string
-	seen := map[string]bool{}
 	found := false
 	for _, sh := range sheets {
 		b := specSheetBlocks(sh.rows)
@@ -209,19 +208,13 @@ func readPlanningSpecSheets(fileHeader *multipart.FileHeader) ([][]string, bool,
 			continue
 		}
 		found = true
-		for _, row := range b {
-			key := NormalizeCodeValue(row["Machine"])
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			blocks = append(blocks, row)
-		}
+		blocks = append(blocks, b...)
 	}
 	if !found {
 		return nil, false, nil
 	}
-	return specBlocksToTable(blocks), true, nil
+	// เครื่องเดียวกันเขียนซ้ำ = เอาบล็อกล่างสุดของไฟล์ (ดู plan_latest_row.go)
+	return specBlocksToTable(keepLatestMachineBlocks(blocks)), true, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -398,10 +391,9 @@ func loadSpecPlans() map[string]map[string]string {
 		if mc == "" {
 			mc = machineFromRow(m)
 		}
+		// เครื่องเดียวกันเจอหลายแถวให้เอาแถวล่าสุด (เรียงตาม id มาแล้ว)
 		if key := NormalizeCodeValue(mc); key != "" {
-			if _, ok := out[key]; !ok {
-				out[key] = m
-			}
+			out[key] = m
 		}
 	}
 	return out

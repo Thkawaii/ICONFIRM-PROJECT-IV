@@ -384,6 +384,48 @@ var udDatasetKeyFields = map[string][]string{
 	models.DatasetPCPDailyPlan:  {"Machine"},
 }
 
+// ---------------------------------------------------------------------------
+// ชุดข้อมูลที่ยึดกติกา "หนึ่งคีย์ = หนึ่งแถว"
+//
+// Planning PCP ใช้ Machine No. (MC#) เป็นตัวระบุเครื่อง เครื่องหนึ่งเครื่อง
+// มีแผนจ่ายได้แผนเดียว ตอนอัปไฟล์แผนรอบใหม่จึงต้องเป็น
+//
+//	MC# เดิม → UPDATE แถวนั้นตามไฟล์ล่าสุด (Country · Main line · Stand by shipping)
+//	MC# ใหม่ → INSERT เป็นแถวใหม่
+//
+// และถ้าในระบบมีแถวซ้ำของเครื่องเดียวกันค้างอยู่ (จากไฟล์รอบก่อน ๆ ที่คนละชื่อไฟล์)
+// ให้ยุบเหลือแถวเดียว ไม่ใช่เพิ่มแถวที่สี่ทับถมต่อไป
+//
+// ของเดิมเทียบแบบ "คีย์ต้องมีแถวเดียวทั้งในไฟล์และในระบบ" ถ้าเจอซ้ำจะยอมแพ้แล้ว
+// INSERT ทุกแถว ผลคือเครื่องเดียวมี 3 แถวอย่างที่เจอในตาราง Planning PCP
+// และหน้าจอ WH ไปหยิบแถวเก่าสุดมาแสดง (ประเทศ/วันที่ยังเป็นของรอบก่อน)
+//
+// ชุดข้อมูลอื่นไม่เข้าเกณฑ์นี้ เพราะหนึ่งคีย์มีได้หลายแถวตามการใช้งานจริง
+// (เช่น Planning ของ WH ที่แยกแถวตามพาร์ท)
+// ---------------------------------------------------------------------------
+var udOneRowPerKey = map[string]bool{
+	models.DatasetSpecSheet:    true,
+	models.DatasetPCPDailyPlan: true,
+}
+
+// udOneRowKey: คีย์ของกติกา "หนึ่งคีย์ = หนึ่งแถว" (คืน "" ถ้าแถวนี้ไม่มีคีย์)
+//
+// เทียบแบบ normalize (ไม่สนตัวพิมพ์ ช่องว่าง ขีด) ให้ตรงกับที่ทั้งระบบใช้เทียบ
+// เลขเครื่อง ไม่งั้นไฟล์ที่พิมพ์ "YN15437980 " กับ "yn-15437980" จะถูกนับเป็น
+// สองเครื่องแล้วเกิดแถวซ้ำอีกรอบ
+func udOneRowKey(dataset string, data map[string]string) string {
+	fields := udDatasetKeyFields[dataset]
+	parts := make([]string, 0, len(fields))
+	for _, f := range fields {
+		parts = append(parts, NormalizeCodeValue(pickField(data, f, extraColumnPrefix+f)))
+	}
+	key := strings.Join(parts, "|")
+	if strings.Trim(key, "|") == "" {
+		return ""
+	}
+	return key
+}
+
 var udDatasetCoreFields = map[string][]string{
 	models.DatasetPlanning:      {"Product Spec 1", "Product Spec 2", "KCM Order", "Country Name"},
 	models.DatasetDailyPlan:     {"Spec Code", "Country Name", "Base machine spec.", "Destination", "Shoe", "Front ATT", "IT device"},
@@ -668,12 +710,19 @@ func PreviewUploadDataMapping(c *gin.Context) {
 
 	deletes := uploadDataSyncDeletes(dataset, existingRows, plan, fileName)
 	deleteCount, deleteLocked := countSyncDeletes(deletes)
+	mergeCount, _ := countSyncMerges(deletes)
 	for _, d := range deletes {
 		if len(preview) >= 300 {
 			break
 		}
+		// MERGE = แถวซ้ำของคีย์เดียวกันที่จะยุบรวมเหลือแถวเดียว ไม่ใช่ข้อมูลที่หายไปจากไฟล์
 		status := "DELETE"
-		if d.locked {
+		switch {
+		case d.merged && d.locked:
+			status = "MERGE_LOCKED"
+		case d.merged:
+			status = "MERGE"
+		case d.locked:
 			status = "DELETE_LOCKED"
 		}
 		preview = append(preview, rowResult{Key: d.label, Status: status})
@@ -743,6 +792,7 @@ func PreviewUploadDataMapping(c *gin.Context) {
 			"locked":       counts["LOCKED"],
 			"deleted":      deleteCount,
 			"deleteLocked": deleteLocked,
+			"merged":       mergeCount,
 		},
 		"rows": preview,
 	})
@@ -921,6 +971,18 @@ func GetUploadData(c *gin.Context) {
 	}
 
 	kw := strings.TrimSpace(c.Query("keyword"))
+
+	// ชุดข้อมูลที่มีช่องวันที่ (Planning PCP ฯลฯ) ค้นได้ทุกช่องที่ตารางแสดง
+	// และค้นด้วยวันที่ได้ด้วย — กรอก 25-Sep-26 แล้วได้ทุกแถวที่จ่ายวันนั้น
+	// ต้องเทียบเป็น "วัน" ไม่ใช่เทียบตัวอักษร จึงกรองในหน่วยความจำ
+	// (ดูเหตุผลเต็มใน upload_data_search.go)
+	if kw != "" && udSearchesAllFields(dataset) {
+		ids := searchUploadRowIDs(dataset, kw)
+		rows := loadUploadRowsByID(pageOfIDs(ids, page, limit))
+		respondUploadDataRows(c, dataset, rows, int64(len(ids)), page, limit)
+		return
+	}
+
 	applyFilter := func(q *gorm.DB) *gorm.DB {
 		q = q.Where("dataset = ?", dataset)
 		if kw != "" {
@@ -942,6 +1004,11 @@ func GetUploadData(c *gin.Context) {
 		Limit(limit).Offset((page - 1) * limit).
 		Find(&rows)
 
+	respondUploadDataRows(c, dataset, rows, total, page, limit)
+}
+
+// respondUploadDataRows: ส่งผลลัพธ์ตารางข้อมูลที่อัปโหลด (ใช้ร่วมกันทั้งแบบค้นหาและไม่ค้นหา)
+func respondUploadDataRows(c *gin.Context, dataset string, rows []models.UploadDataRow, total int64, page, limit int) {
 	totalPages := 0
 	if total > 0 {
 		totalPages = int((total + int64(limit) - 1) / int64(limit))
@@ -1142,11 +1209,17 @@ func UploadDataFile(c *gin.Context) {
 		}
 	}
 	deleteIDs := syncDeleteIDs(deletes)
-	_, lockedKept := countSyncDeletes(deletes)
+	deletedFromFile, lockedKept := countSyncDeletes(deletes)
+	mergedRows, _ := countSyncMerges(deletes)
 	for _, d := range deletes {
-		if d.locked {
-			problems = append(problems, fmt.Sprintf("%s: ไม่มีในไฟล์แล้ว แต่%s (%s) — ไม่ลบแถวนี้", d.label, scanLockedMessage, d.reason))
+		if !d.locked {
+			continue
 		}
+		if d.merged {
+			problems = append(problems, fmt.Sprintf("%s: เป็นแถวซ้ำของเครื่องเดียวกัน แต่%s (%s) — ไม่ลบแถวนี้", d.label, scanLockedMessage, d.reason))
+			continue
+		}
+		problems = append(problems, fmt.Sprintf("%s: ไม่มีในไฟล์แล้ว แต่%s (%s) — ไม่ลบแถวนี้", d.label, scanLockedMessage, d.reason))
 	}
 
 	if len(toInsert) == 0 && len(toUpdate) == 0 && len(deleteIDs) == 0 {
@@ -1228,10 +1301,12 @@ func UploadDataFile(c *gin.Context) {
 	}
 
 	c.JSON(201, gin.H{
-		"dataset":    dataset,
-		"imported":   len(toInsert),
-		"updated":    len(toUpdate),
-		"deleted":    len(deleteIDs),
+		"dataset":  dataset,
+		"imported": len(toInsert),
+		"updated":  len(toUpdate),
+		// deleted = แถวที่หายไปจากไฟล์ / merged = แถวซ้ำของเครื่องเดียวกันที่ยุบรวม
+		"deleted":    deletedFromFile,
+		"merged":     mergedRows,
 		"lockedKept": lockedKept,
 		"locked":     locked,
 		"skipped":    skipped,
@@ -1270,9 +1345,112 @@ type udDecision struct {
 	oldData     map[string]string
 	keyLabel    string
 	reason      string
+	oneRowKey   string // คีย์ของกติกา "หนึ่งคีย์ = หนึ่งแถว" (เฉพาะชุดข้อมูลที่ใช้กติกานี้)
 }
 
 func planUploadDataRows(dataset string, ds udDataset, existingRows []models.UploadDataRow, dataAt func(int) map[string]string, n int) []udDecision {
+	if udOneRowPerKey[dataset] {
+		return planUploadRowsOneRowPerKey(dataset, ds, existingRows, dataAt, n)
+	}
+	return planUploadRowsBySignature(dataset, ds, existingRows, dataAt, n)
+}
+
+// ---------------------------------------------------------------------------
+// อัปโหลดแผน Planning PCP: ยึด Machine No. เป็นตัวตัดสินทีละแถว
+//
+//	MC# มีในระบบแล้ว + ไฟล์เปลี่ยนค่า   → UPDATE แถวเดิม (ไม่เพิ่มแถวใหม่)
+//	MC# มีในระบบแล้ว + ไฟล์เหมือนเดิม   → ไม่ต้องเขียนอะไร แต่ถือว่าแถวนี้ยังอยู่
+//	MC# ยังไม่มีในระบบ                 → INSERT
+//	MC# เดิมที่สแกนผ่านแล้ว            → ไม่ทับ แจ้งไว้ในรายการปัญหา
+//
+// เครื่องเดียวกันเขียนซ้ำในไฟล์ → ใช้แถวล่างสุด (ดู plan_latest_row.go)
+// แถวซ้ำของเครื่องเดียวกันที่ค้างในระบบ → ยุบทิ้งใน uploadDataSyncDeletes
+// ---------------------------------------------------------------------------
+func planUploadRowsOneRowPerKey(dataset string, ds udDataset, existingRows []models.UploadDataRow, dataAt func(int) map[string]string, n int) []udDecision {
+	existingData := make([]map[string]string, len(existingRows))
+	byKey := map[string][]int{}
+	for i, r := range existingRows {
+		m := map[string]string{}
+		_ = json.Unmarshal([]byte(r.DataJSON), &m)
+		existingData[i] = m
+		if k := udOneRowKey(dataset, m); k != "" {
+			// existingRows เรียงตาม id จากน้อยไปมาก → ตัวท้ายคือแถวที่เพิ่งอัปล่าสุด
+			byKey[k] = append(byKey[k], i)
+		}
+	}
+
+	// เครื่องเดียวกันมีหลายแถวในไฟล์ → แถวล่างสุดเป็นตัวจริง
+	lastInFile := map[string]int{}
+	for i := 0; i < n; i++ {
+		if k := udOneRowKey(dataset, dataAt(i)); k != "" {
+			lastInFile[k] = i
+		}
+	}
+
+	var locks *scanLockIndex
+	out := make([]udDecision, n)
+	for i := 0; i < n; i++ {
+		data := dataAt(i)
+		key := udOneRowKey(dataset, data)
+		rawKey := uploadDataDiffKey(dataset, data)
+		d := udDecision{
+			keyLabel:    strings.TrimSpace(strings.ReplaceAll(strings.Trim(rawKey, "|"), "|", " / ")),
+			existingIdx: -1,
+			oneRowKey:   key,
+		}
+
+		// ไม่มีเลขเครื่อง = ชี้ไม่ได้ว่าเป็นเครื่องไหน เอาเข้าเป็นแถวใหม่ตามเดิม
+		if key == "" {
+			d.action = udActionInsert
+			out[i] = d
+			continue
+		}
+
+		// มีแถวของเครื่องนี้อยู่ล่างกว่าในไฟล์เดียวกัน → ปล่อยให้แถวนั้นจัดการ
+		if lastInFile[key] != i {
+			d.action = udActionDuplicate
+			out[i] = d
+			continue
+		}
+
+		idxs := byKey[key]
+		if len(idxs) == 0 {
+			d.action = udActionInsert
+			out[i] = d
+			continue
+		}
+
+		// แถวที่อัปเข้ามาล่าสุด (id มากสุด) เป็นตัวที่อัปเดต
+		// ที่เหลือเป็นแถวซ้ำ ให้ uploadDataSyncDeletes ยุบทิ้ง
+		target := idxs[len(idxs)-1]
+		old := existingRows[target]
+		d.existing = &old
+		d.existingIdx = target
+		d.oldData = existingData[target]
+
+		// ข้อมูลตรงกับที่มีอยู่แล้ว → ไม่ต้องเขียนทับ แต่ต้องนับว่าแถวนี้ยังอยู่ในไฟล์
+		// (ไม่งั้นจะถูกลบ และแถวซ้ำที่เหลือจะไม่ถูกยุบ)
+		if uploadDataSignature(data, nil, ds.Ignore) == uploadDataSignature(d.oldData, nil, ds.Ignore) {
+			d.action = udActionDuplicate
+			out[i] = d
+			continue
+		}
+
+		if locks == nil {
+			locks = buildScanLockIndex()
+		}
+		if isLocked, reason := locks.uploadRow(dataset, d.oldData); isLocked {
+			d.action = udActionLocked
+			d.reason = reason
+		} else {
+			d.action = udActionUpdate
+		}
+		out[i] = d
+	}
+	return out
+}
+
+func planUploadRowsBySignature(dataset string, ds udDataset, existingRows []models.UploadDataRow, dataAt func(int) map[string]string, n int) []udDecision {
 	existingData := make([]map[string]string, len(existingRows))
 	sigIdx := map[string][]int{}
 	byKey := map[string][]int{}
@@ -1349,22 +1527,39 @@ func planUploadDataRows(dataset string, ds udDataset, existingRows []models.Uplo
 	return out
 }
 
-// uploadDataSyncDeletes: แถวของไฟล์ชื่อเดียวกันที่ไม่อยู่ในไฟล์ที่อัปรอบนี้แล้ว (ถูกลบใน Excel)
+// uploadDataSyncDeletes: แถวที่ต้องหายไปหลังอัปไฟล์รอบนี้
+//
+//	ก. แถวของไฟล์ชื่อเดียวกันที่ไม่มีในไฟล์รอบนี้แล้ว (คนลบแถวนั้นใน Excel)
+//	ข. แถวซ้ำของคีย์เดียวกันในชุดข้อมูลที่ยึด "หนึ่งคีย์ = หนึ่งแถว" (ดู udOneRowPerKey)
+//	   ข้อนี้ไม่ดูชื่อไฟล์ เพราะแถวซ้ำที่ค้างอยู่มักมาจากไฟล์รอบก่อนที่ชื่อคนละชื่อ
+//	   (Draft.00 → Draft.01) ถ้าดูชื่อไฟล์ด้วย แถวเก่าจะค้างอยู่ตลอดไป
+//
+// แถวที่สแกนผ่านแล้วไม่ถูกลบทั้งสองข้อ — ผู้เรียกแจ้งไว้ในรายการปัญหาแทน
 func uploadDataSyncDeletes(dataset string, existingRows []models.UploadDataRow, plan []udDecision, fileName string) []syncDelete {
 	present := map[uint]bool{}
+	fileKeys := map[string]bool{}
 	for _, d := range plan {
 		if d.existing != nil {
 			present[d.existing.ID] = true
+		}
+		if d.oneRowKey != "" {
+			fileKeys[d.oneRowKey] = true
 		}
 	}
 	var out []syncDelete
 	var locks *scanLockIndex
 	for _, r := range existingRows {
-		if present[r.ID] || !sameUploadFile(r.FileName, fileName) {
+		if present[r.ID] {
 			continue
 		}
 		m := map[string]string{}
 		_ = json.Unmarshal([]byte(r.DataJSON), &m)
+
+		// แถวซ้ำของเครื่องที่ไฟล์รอบนี้มี → ยุบทิ้งแม้มาจากไฟล์ชื่ออื่น
+		superseded := udOneRowPerKey[dataset] && fileKeys[udOneRowKey(dataset, m)]
+		if !superseded && !sameUploadFile(r.FileName, fileName) {
+			continue
+		}
 		label := strings.TrimSpace(strings.ReplaceAll(strings.Trim(uploadDataDiffKey(dataset, m), "|"), "|", " / "))
 		if label == "" {
 			label = fmt.Sprintf("#%d", r.ID)
@@ -1373,7 +1568,7 @@ func uploadDataSyncDeletes(dataset string, existingRows []models.UploadDataRow, 
 			locks = buildScanLockIndex()
 		}
 		locked, reason := locks.uploadRow(dataset, m)
-		out = append(out, syncDelete{id: r.ID, label: label, locked: locked, reason: reason})
+		out = append(out, syncDelete{id: r.ID, label: label, locked: locked, reason: reason, merged: superseded})
 	}
 	return out
 }

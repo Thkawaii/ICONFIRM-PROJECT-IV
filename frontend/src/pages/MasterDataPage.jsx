@@ -52,6 +52,17 @@ const DATASET_TYPES = [{
   label: 'Master Data'
 }];
 const DEFAULT_DATASET = DATASET_TYPES[0].value;
+
+// ชุดข้อมูลที่ค้นหาได้ทุกคอลัมน์ และค้นด้วยวันที่ได้ (Main line / Stand by shipping)
+// กรอก 25-Sep-26 · 2026-09-25 · 25/09/2026 ได้ผลเหมือนกัน — ฝั่ง backend เทียบเป็นวัน
+// ไม่ได้เทียบตัวอักษร (ดู upload_data_search.go)
+const DATE_SEARCH_DATASETS = ['spec_sheet', 'pcp_daily_plan'];
+function searchPlaceholder(dataset) {
+  if (DATE_SEARCH_DATASETS.includes(dataset)) {
+    return 'ค้นหา (เลขเครื่อง / LOT / ประเทศ / วันที่ เช่น 25-Sep-26)';
+  }
+  return 'ค้นหา (เลขเครื่อง / LOT / Order / Parts)';
+}
 const TYPE_OPTIONS = DATASET_TYPES;
 const ALL_TYPE_LABELS = Object.fromEntries(DATASET_TYPES.map(t => [t.value, t.label]));
 function typeLabel(value) {
@@ -485,7 +496,7 @@ function DatasetView({
         gap: 10,
         flexWrap: 'wrap'
       }}>
-          <input className="wh-search" placeholder="ค้นหา (เลขเครื่อง / LOT / Order / Parts)" value={keyword} onChange={e => setKeyword(e.target.value)} style={{
+          <input className="wh-search" placeholder={searchPlaceholder(dataset)} value={keyword} onChange={e => setKeyword(e.target.value)} style={{
           minWidth: 240
         }} />
           <button className="wh-issue-btn" onClick={handleExport} disabled={exporting}>
