@@ -266,7 +266,7 @@ export default function MailRecipientsPage() {
                       <strong>{i + 1}</strong>
                     </td>
                     <td data-label="อีเมล" style={{
-                fontFamily: 'ui-monospace, Menlo, monospace',
+                fontFamily: 'var(--font-mono)',
                 fontWeight: 600
               }}>{r.email}</td>
                     <td data-label="ชื่อนามสกุล">{r.name || '—'}</td>

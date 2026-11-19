@@ -10,7 +10,8 @@
   object-fit: cover;
 }
 .scan-popup .scan-popup-input {
-  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 22px; letter-spacing: 1px; text-align: center; padding: 16px 14px;
   border: 2px dashed #06e0d4; border-radius: 12px; background: rgba(6, 224, 212,.06); color: #101828;
 }

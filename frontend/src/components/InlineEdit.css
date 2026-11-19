@@ -89,7 +89,8 @@
 }
 
 .ie-mono {
-  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .ie-empty {

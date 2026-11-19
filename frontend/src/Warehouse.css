@@ -1,7 +1,7 @@
 .wh-page {
   min-height: 100vh;
   background: #f4f6f8;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans, 'Inter', 'IBM Plex Sans Thai', system-ui, sans-serif);
 }
 
 .wh-topbar {
@@ -1202,7 +1202,8 @@
   margin-top: 4px;
 }
 .scan-popup .scan-popup-input {
-  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 22px;
   letter-spacing: 1px;
   text-align: center;
@@ -1613,7 +1614,8 @@
 }
 
 .wh-detail-value.mono {
-  font-family: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
 
@@ -2168,9 +2170,11 @@ button.qa-photo-thumb img {
 }
 
 /* ค่าตัวจริงเด่นกว่าป้าย เพราะเป็นสิ่งที่ต้องเอาไปเทียบ
-   ใช้ monospace ให้ตัวอักษรกว้างเท่ากัน อ่านเทียบกันง่าย */
+   ใช้ Inter + tabular-nums ให้ตัวเลขกว้างเท่ากัน อ่านเทียบกันง่าย
+   และเลข 0 เป็นวงรีเปล่า ไม่มีขีดทับ */
 .scan-error-val {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 14px;
   font-weight: 700;
   color: #9b1c1c;
@@ -2182,8 +2186,9 @@ button.qa-photo-thumb img {
    ---------------------------------------------------------------------------
    เอาค่าที่ยิงมาวางให้อ่านก่อนกดยืนยัน ไม่ได้ตรวจว่าถูกหรือผิด
 
-   ใช้ monospace และตัวใหญ่กว่าปกติ เพราะสิ่งที่ต้องจับผิดคือตัวอักษรเดี่ยว ๆ
-   ที่หน้าตาคล้ายกัน — I กับ l กับ 1 · O กับ 0 — ฟอนต์ธรรมดาแยกไม่ออก */
+   ใช้ Inter ตัวใหญ่กว่าปกติ + tabular-nums + letter-spacing เพราะสิ่งที่ต้อง
+   จับผิดคือตัวอักษรเดี่ยว ๆ ที่หน้าตาคล้ายกัน — I กับ l กับ 1 · O กับ 0
+   เลข 0 ของ Inter เป็นวงรีแคบไม่มีขีดทับ แยกจาก O ที่กลมกว้างกว่าได้ */
 .scan-confirm-rows {
   margin-top: 14px;
   display: flex;
@@ -2211,7 +2216,8 @@ button.qa-photo-thumb img {
 
 .scan-confirm-val {
   flex: 1;
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.04em;

@@ -50,7 +50,8 @@
   box-shadow: 0 0 0 3px rgba(15, 133, 128, 0.12);
 }
 .fmt-input-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .fmt-actions {

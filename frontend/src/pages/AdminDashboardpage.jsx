@@ -340,7 +340,7 @@ export default function AdminDashboardPage() {
                 fontWeight: 600
               }}>{u.name}</td>
                     <td data-label="Username" style={{
-                fontFamily: 'ui-monospace, Menlo, monospace',
+                fontFamily: 'var(--font-mono)',
                 color: '#475569'
               }}>{u.username}</td>
                     <td data-label="อีเมล" style={{

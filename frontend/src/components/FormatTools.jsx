@@ -27,7 +27,7 @@ const panelBodyStyle = {
   padding: '14px 16px'
 };
 const codeStyle = {
-  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace'
+  fontFamily: 'var(--font-mono)'
 };
 function Collapsible({
   title,
