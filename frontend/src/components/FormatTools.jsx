@@ -669,7 +669,10 @@ export function ChangePreview({
       CHANGED: ['#fef3c7', '#92400e'],
       LOCKED: ['#eafcfb', '#146a66'],
       DELETE: ['#fee2e2', '#991b1b'],
-      DELETE_LOCKED: ['#f1f5f9', '#475569']
+      DELETE_LOCKED: ['#f1f5f9', '#475569'],
+      // MERGE = แถวซ้ำของ Machine No. เดิมที่จะยุบรวมเหลือแถวเดียว
+      MERGE: ['#ede9fe', '#5b21b6'],
+      MERGE_LOCKED: ['#f1f5f9', '#475569']
     };
     const [bg, color] = map[status] || ['#f1f5f9', '#475569'];
     return <span style={{
@@ -717,6 +720,7 @@ export function ChangePreview({
         {s.locked > 0 && stat('สแกนแล้ว (ไม่อัปเดต)', s.locked, '#eafcfb', '#146a66')}
         {s.deleted > 0 && stat('ลบ (ไม่มีในไฟล์แล้ว)', s.deleted, '#fee2e2', '#991b1b')}
         {s.deleteLocked > 0 && stat('ไม่มีในไฟล์ แต่สแกนแล้ว (ไม่ลบ)', s.deleteLocked, '#f1f5f9', '#475569')}
+        {s.merged > 0 && stat('ยุบแถวซ้ำ (เครื่องเดียวกัน)', s.merged, '#ede9fe', '#5b21b6')}
       </div>
 
       {showType && byType.length > 0 && <div style={{

@@ -230,10 +230,48 @@ func dailyPlanSheetRows(rows [][]string) []dailyPlanRow {
 	return out
 }
 
+// dailyPlanMachineKey: คีย์ของแถวแผนจ่าย = MC# แบบ normalize
+func dailyPlanMachineKey(r dailyPlanRow) string {
+	return NormalizeCodeValue(r.Machine)
+}
+
+// mergeLatestDailyPlanRow: เครื่องเดียวกันเจอซ้ำ — ช่องที่แถวล่าสุดกรอกมาชนะ
+//
+// ดูเหตุผลของกติกา "เอาอันล่าสุด" ใน plan_latest_row.go
+func mergeLatestDailyPlanRow(prev, latest dailyPlanRow) dailyPlanRow {
+	out := prev
+	out.Machine = latest.Machine
+	if v := strings.TrimSpace(latest.Lot); v != "" {
+		out.Lot = v
+	}
+	if v := strings.TrimSpace(latest.Country); v != "" {
+		out.Country = v
+	}
+	if v := strings.TrimSpace(latest.Qty); v != "" {
+		out.Qty = v
+	}
+	if v := strings.TrimSpace(latest.MainLine); v != "" {
+		out.MainLine = v
+	}
+	if v := strings.TrimSpace(latest.StandBy); v != "" {
+		out.StandBy = v
+	}
+	if latest.GroupSize > 0 {
+		out.GroupSize = latest.GroupSize
+	}
+	return out
+}
+
+// keepLatestDailyPlanRows: ยุบแถวของเครื่องเดียวกันให้เหลือแถวเดียว เอาค่าจากแถวล่างสุด
+func keepLatestDailyPlanRows(list []dailyPlanRow) []dailyPlanRow {
+	return keepLatestByKey(list, dailyPlanMachineKey, mergeLatestDailyPlanRow)
+}
+
 // readDailyPlanSheets: อ่านชีต Daily plan ทุกชีตในไฟล์ (20T / 30T / ชีตเดียวก็ได้)
 //
 // ไฟล์แผนผลิตบางเดือนมีทั้ง 20T และ 30T บางเดือนมีชุดเดียว — รวมเป็นตารางเดียวกัน
-// เครื่องซ้ำข้ามชีตเอาตัวแรกที่เจอ
+// เครื่องเดียวกันที่เขียนซ้ำ (ในชีตเดียวหรือข้ามชีต) ยุบเหลือแถวเดียว
+// โดยเอาค่าจากแถวล่างสุดที่เจอ — ไม่ใช่แถวแรก (ดู plan_latest_row.go)
 //
 // ok=false = ไฟล์นี้ไม่มีชีต Daily plan เลย
 func readDailyPlanSheets(fileHeader *multipart.FileHeader) ([]dailyPlanRow, bool, error) {
@@ -243,7 +281,6 @@ func readDailyPlanSheets(fileHeader *multipart.FileHeader) ([]dailyPlanRow, bool
 	}
 
 	var all []dailyPlanRow
-	seen := map[string]bool{}
 	found := false
 
 	for _, sh := range sheets {
@@ -252,19 +289,12 @@ func readDailyPlanSheets(fileHeader *multipart.FileHeader) ([]dailyPlanRow, bool
 			continue
 		}
 		found = true
-		for _, r := range list {
-			key := NormalizeCodeValue(r.Machine)
-			if key == "" || seen[key] {
-				continue
-			}
-			seen[key] = true
-			all = append(all, r)
-		}
+		all = append(all, list...)
 	}
 	if !found {
 		return nil, false, nil
 	}
-	return all, true, nil
+	return keepLatestDailyPlanRows(all), true, nil
 }
 
 // dailyPlanByMachine: จัดรายการเป็น map ตามเลขเครื่อง (normalize แล้ว)
@@ -377,42 +407,31 @@ func readPlanningPCPWorkbook(fileHeader *multipart.FileHeader) ([][]string, bool
 	}
 
 	// แผนจ่ายรายวันก่อน เอาไว้เติมช่องที่ Specification sheet ไม่ได้กรอก
+	// เครื่องซ้ำเอาแถวล่างสุดของไฟล์ (ดู plan_latest_row.go)
 	var plan []dailyPlanRow
-	seenPlan := map[string]bool{}
 	for _, sh := range sheets {
-		for _, r := range dailyPlanSheetRows(sh.rows) {
-			key := NormalizeCodeValue(r.Machine)
-			if key == "" || seenPlan[key] {
-				continue
-			}
-			seenPlan[key] = true
-			plan = append(plan, r)
-		}
+		plan = append(plan, dailyPlanSheetRows(sh.rows)...)
 	}
-	dp := dailyPlanByMachine(plan)
+	dp := dailyPlanByMachine(keepLatestDailyPlanRows(plan))
 
-	header := append(append([]string{}, specPCPColumns...), pcpExtraColumns...)
-	table := [][]string{header}
-
-	seen := map[string]bool{}
+	var blocks []map[string]string
 	found := false
 	for _, sh := range sheets {
-		blocks := specSheetBlocks(sh.rows)
-		if blocks == nil {
+		list := specSheetBlocks(sh.rows)
+		if list == nil {
 			continue
 		}
 		found = true
-		for _, b := range blocks {
-			key := NormalizeCodeValue(b["Machine"])
-			if key == "" || seen[key] {
-				continue
-			}
-			seen[key] = true
-			table = append(table, specBlockToPCPRow(b, dp))
-		}
+		blocks = append(blocks, list...)
 	}
 	if !found {
 		return nil, false, nil
+	}
+
+	header := append(append([]string{}, specPCPColumns...), pcpExtraColumns...)
+	table := [][]string{header}
+	for _, b := range keepLatestMachineBlocks(blocks) {
+		table = append(table, specBlockToPCPRow(b, dp))
 	}
 	return table, true, nil
 }
@@ -474,21 +493,52 @@ func saveDailyPlanDataset(c *gin.Context, dataset, fileName string, userID uint,
 		rows = append(rows, row)
 	}
 
-	// ลบเฉพาะแถวที่มาจากไฟล์ชื่อเดียวกัน ไม่ใช่ลบทั้งตาราง
+	// แถวเก่าที่ต้องถูกแทนที่ — ดูสองเงื่อนไข ไม่ใช่เงื่อนไขเดียว
 	//
-	// ของเดิมลบทิ้งหมดทุกครั้งที่อัป ทำให้อัปไฟล์ที่สองแล้วแผนจากไฟล์แรกหายไป
-	// ซึ่งขัดกับตารางอื่นในระบบที่ยึดชื่อไฟล์เป็นตัวแยกชุดข้อมูล (ดู sameUploadFile)
+	//  1) แถวที่มาจากไฟล์ชื่อเดียวกัน → แผนรอบใหม่แทนรอบเก่าทั้งก้อน
+	//     (รวมแถวที่ถูกลบออกจากไฟล์ไปแล้ว ซึ่งต้องหายไปจากระบบด้วย)
 	//
-	//   อัปไฟล์ชื่อเดิม   แทนที่ของชุดนั้น  (แผนรอบใหม่ย่อมแทนรอบเก่าทั้งก้อน)
-	//   อัปไฟล์ชื่อใหม่   ต่อท้าย ของเดิมอยู่ครบ
+	//  2) แถวของ "เครื่องเดียวกัน" ที่ไฟล์รอบนี้มี → แทนที่แม้มาจากไฟล์ชื่ออื่น
+	//     เพราะชื่อไฟล์แผนเปลี่ยนทุกรอบ (Draft.00 → Draft.01) ถ้าดูแต่ชื่อไฟล์
+	//     เครื่องเดิมจะมีสองแถวจากสองไฟล์ แล้วหน้า WH หยิบแถวเก่าไปแสดง
+	//     ประเทศและวันจ่ายของรอบก่อน — ซึ่งคือ Machine No. เดิมต้อง UPDATE ไม่ใช่เพิ่มแถว
 	//
-	// เทียบชื่อแบบ normalize ให้ตรงกับที่ sameUploadFile ใช้
-	// จะได้ไม่พลาดเพราะตัวพิมพ์หรือช่องว่างต่างกัน
+	// ไม่ลบทั้งตาราง เพราะเครื่องของไฟล์อื่นที่ยังไม่ถูกแทนที่ต้องอยู่ครบ
+	// (ตารางนี้ไม่มีการสแกนผูกไว้ จึงลบแล้วเขียนใหม่ได้ ไม่มีอะไรต้องล็อก)
+	newMachines := make(map[string]bool, len(list))
+	for _, r := range list {
+		if k := NormalizeCodeValue(r.Machine); k != "" {
+			newMachines[k] = true
+		}
+	}
+
+	var oldRows []models.UploadDataRow
+	config.DB.Select("id", "machine_no", "data_json", "file_name").
+		Where("dataset = ?", models.DatasetPCPDailyPlan).Find(&oldRows)
+
+	var staleIDs []uint
+	for _, r := range oldRows {
+		if sameUploadFile(r.FileName, fileName) {
+			staleIDs = append(staleIDs, r.ID)
+			continue
+		}
+		mc := r.MachineNo
+		if mc == "" {
+			m := map[string]string{}
+			if json.Unmarshal([]byte(r.DataJSON), &m) == nil {
+				mc = pickField(m, "Machine", extraColumnPrefix+"Machine")
+			}
+		}
+		if k := NormalizeCodeValue(mc); k != "" && newMachines[k] {
+			staleIDs = append(staleIDs, r.ID)
+		}
+	}
+
 	err = config.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("dataset = ?", models.DatasetPCPDailyPlan).
-			Where("LOWER(TRIM(file_name)) = ?", normFileName(fileName)).
-			Delete(&models.UploadDataRow{}).Error; err != nil {
-			return err
+		for _, part := range chunkSlice(staleIDs, dbInsertBatch) {
+			if err := tx.Where("id IN ?", part).Delete(&models.UploadDataRow{}).Error; err != nil {
+				return err
+			}
 		}
 		return tx.CreateInBatches(&rows, 1000).Error
 	})
@@ -499,6 +549,12 @@ func saveDailyPlanDataset(c *gin.Context, dataset, fileName string, userID uint,
 }
 
 // dailyPlanIndex: แผนจ่ายรายวัน key = เลขเครื่องแบบ normalize
+//
+// เครื่องเดียวกันเจอหลายแถว (แถวซ้ำที่ค้างจากไฟล์รอบก่อน) เอา "แถวล่าสุด" เสมอ
+// loadUploadRows เรียงตาม id จากน้อยไปมาก แถวท้ายคือแถวที่อัปเข้ามาหลังสุด
+//
+// ของเดิมเอาแถวแรกที่เจอ = แถวเก่าสุด ทำให้หน้า WH เห็นประเทศและวันจ่ายของรอบก่อน
+// ทั้งที่อัปแผนใหม่ไปแล้ว
 func dailyPlanIndex() map[string]map[string]string {
 	out := map[string]map[string]string{}
 	for _, row := range loadUploadRows(models.DatasetPCPDailyPlan) {
@@ -506,9 +562,7 @@ func dailyPlanIndex() map[string]map[string]string {
 		if key == "" {
 			continue
 		}
-		if _, ok := out[key]; !ok {
-			out[key] = row
-		}
+		out[key] = row
 	}
 	return out
 }

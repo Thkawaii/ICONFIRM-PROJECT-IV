@@ -18,6 +18,9 @@ export async function confirmUploadDeletes(summary, fileName) {
 export function syncResultParts(result) {
   const parts = [];
   if (result?.deleted) parts.push(`ลบ ${result.deleted}`);
+  // แถวซ้ำของเครื่องเดียวกัน (Machine No. เดิม) ที่ยุบรวมเหลือแถวเดียว
+  // ไม่ใช่ข้อมูลที่หายไปจากไฟล์ จึงแยกคำออกจาก "ลบ"
+  if (result?.merged) parts.push(`ยุบแถวซ้ำ ${result.merged}`);
   if (result?.lockedKept) parts.push(`สแกนแล้ว ไม่ลบ ${result.lockedKept}`);
   return parts;
 }

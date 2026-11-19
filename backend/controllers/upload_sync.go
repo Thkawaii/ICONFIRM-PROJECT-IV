@@ -54,14 +54,38 @@ type syncDelete struct {
 	label  string
 	locked bool
 	reason string
+
+	// merged = แถวนี้ถูกเอาออกเพราะเป็น "แถวซ้ำของคีย์เดียวกัน" ที่ยุบรวมให้เหลือแถวเดียว
+	// ไม่ใช่เพราะหายไปจากไฟล์ — นับแยกกัน เพราะสองเรื่องนี้คนละความหมายต่อผู้ใช้
+	// (แถวหายจากไฟล์ = ข้อมูลหาย ต้องถามยืนยัน / ยุบแถวซ้ำ = สิ่งที่ตั้งใจให้เป็น)
+	merged bool
 }
 
+// countSyncDeletes: นับแถวที่ "หายไปจากไฟล์" (ไม่รวมแถวซ้ำที่ยุบรวม)
 func countSyncDeletes(list []syncDelete) (deletable, lockedKept int) {
 	for _, d := range list {
+		if d.merged {
+			continue
+		}
 		if d.locked {
 			lockedKept++
 		} else {
 			deletable++
+		}
+	}
+	return
+}
+
+// countSyncMerges: นับแถวซ้ำของคีย์เดียวกันที่ยุบรวมให้เหลือแถวเดียว
+func countSyncMerges(list []syncDelete) (merged, lockedKept int) {
+	for _, d := range list {
+		if !d.merged {
+			continue
+		}
+		if d.locked {
+			lockedKept++
+		} else {
+			merged++
 		}
 	}
 	return
